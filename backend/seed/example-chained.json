@@ -1,0 +1,43 @@
+{
+  "id": "example-chained",
+  "name": "Example: Chained calculators (data passing)",
+  "description": "The second calculator consumes the first one's result via a {{ }} expression. No API keys needed.",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "input",
+      "label": "Input",
+      "position": { "x": 40, "y": 160 },
+      "config": {}
+    },
+    {
+      "id": "calc1",
+      "type": "tool",
+      "label": "6 times 6",
+      "position": { "x": 280, "y": 160 },
+      "config": { "tool_name": "calculator", "tool_params": { "expression": "6 * 6" } }
+    },
+    {
+      "id": "calc2",
+      "type": "tool",
+      "label": "Add 6 to it",
+      "position": { "x": 520, "y": 160 },
+      "config": {
+        "tool_name": "calculator",
+        "tool_params": { "expression": "{{ calc1.data.result }} + 6" }
+      }
+    },
+    {
+      "id": "end",
+      "type": "output",
+      "label": "Output",
+      "position": { "x": 760, "y": 160 },
+      "config": {}
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "start", "target": "calc1", "condition": null, "parallel": false },
+    { "id": "e2", "source": "calc1", "target": "calc2", "condition": null, "parallel": false },
+    { "id": "e3", "source": "calc2", "target": "end", "condition": null, "parallel": false }
+  ]
+}

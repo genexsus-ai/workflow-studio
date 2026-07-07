@@ -1,0 +1,32 @@
+{
+  "id": "example-calculator",
+  "name": "Example: Calculator pipeline",
+  "description": "Runs a calculator tool — works without any API keys.",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "input",
+      "label": "Input",
+      "position": { "x": 40, "y": 160 },
+      "config": {}
+    },
+    {
+      "id": "calc",
+      "type": "tool",
+      "label": "Calculator",
+      "position": { "x": 300, "y": 160 },
+      "config": { "tool_name": "calculator", "tool_params": { "expression": "6 * 7" } }
+    },
+    {
+      "id": "end",
+      "type": "output",
+      "label": "Output",
+      "position": { "x": 560, "y": 160 },
+      "config": {}
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "start", "target": "calc", "condition": null, "parallel": false },
+    { "id": "e2", "source": "calc", "target": "end", "condition": null, "parallel": false }
+  ]
+}

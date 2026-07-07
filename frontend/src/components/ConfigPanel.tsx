@@ -1,0 +1,699 @@
+import type { Edge } from '@xyflow/react'
+import { useEffect, useState } from 'react'
+
+import { listMcpServerTools } from '../api'
+
+import type { StudioNode } from '../lib/translate'
+import type { ConfigField, ConnectorDef, CredentialSummary, FlowAgentSpec, FlowPatternDef, McpServerSummary, McpToolInfo, ModelOption, NodeResult, NodeTypeDef, ToolDef, WorkflowSummary } from '../types'
+
+interface ConfigPanelProps {
+  node: StudioNode | null
+  edge: Edge | null
+  nodeResult?: NodeResult
+  nodeTypes: NodeTypeDef[]
+  tools: ToolDef[]
+  models: ModelOption[]
+  connectors: ConnectorDef[]
+  credentials: CredentialSummary[]
+  mcpServers: McpServerSummary[]
+  workflows: WorkflowSummary[]
+  flows: FlowPatternDef[]
+  currentWorkflowId: string | null
+  onNodeConfigChange: (nodeId: string, config: Record<string, unknown>, label?: string) => void
+  onEdgeChange: (edgeId: string, data: { condition: string | null; parallel: boolean }) => void
+  onDeleteNode: (nodeId: string) => void
+  onDeleteEdge: (edgeId: string) => void
+}
+
+export function ConfigPanel({
+  node,
+  edge,
+  nodeResult,
+  nodeTypes,
+  tools,
+  models,
+  connectors,
+  credentials,
+  mcpServers,
+  workflows,
+  flows,
+  currentWorkflowId,
+  onNodeConfigChange,
+  onEdgeChange,
+  onDeleteNode,
+  onDeleteEdge,
+}: ConfigPanelProps) {
+  if (edge) {
+    const condition = (edge.data?.condition as string | null) ?? ''
+    const parallel = Boolean(edge.data?.parallel)
+    return (
+      <aside className="config-panel">
+        <h2>Edge</h2>
+        <p className="config-subtitle">
+          {edge.source} → {edge.target}
+        </p>
+        <label className="field">
+          <span>Condition (state key)</span>
+          <input
+            value={condition}
+            placeholder="e.g. approved"
+            onChange={(event) =>
+              onEdgeChange(edge.id, { condition: event.target.value || null, parallel })
+            }
+          />
+        </label>
+        <label className="field field-checkbox">
+          <input
+            type="checkbox"
+            checked={parallel}
+            onChange={(event) =>
+              onEdgeChange(edge.id, { condition: condition || null, parallel: event.target.checked })
+            }
+          />
+          <span>Run in parallel</span>
+        </label>
+        <button className="danger" onClick={() => onDeleteEdge(edge.id)}>
+          Delete edge
+        </button>
+      </aside>
+    )
+  }
+
+  if (!node) {
+    return (
+      <aside className="config-panel">
+        <h2>Inspector</h2>
+        <p className="config-subtitle">Select a node or edge to configure it.</p>
+      </aside>
+    )
+  }
+
+  const def = nodeTypes.find((t) => t.type === node.data.nodeType)
+  const config = node.data.config
+
+  const setValue = (name: string, value: unknown) => {
+    onNodeConfigChange(node.id, { ...config, [name]: value })
+  }
+
+  const renderField = (field: ConfigField) => {
+    const value = config[field.name] ?? field.default ?? ''
+    switch (field.type) {
+      case 'text':
+        return (
+          <textarea
+            value={String(value)}
+            placeholder={field.placeholder}
+            rows={3}
+            onChange={(event) => setValue(field.name, event.target.value)}
+          />
+        )
+      case 'number':
+        return (
+          <input
+            type="number"
+            value={Number(value)}
+            min={field.min}
+            max={field.max}
+            step={0.1}
+            onChange={(event) => setValue(field.name, Number(event.target.value))}
+          />
+        )
+      case 'boolean':
+        return (
+          <input
+            type="checkbox"
+            checked={Boolean(config[field.name] ?? field.default ?? false)}
+            onChange={(event) => setValue(field.name, event.target.checked)}
+          />
+        )
+      case 'model_select':
+        return (
+          <select value={String(value)} onChange={(event) => setValue(field.name, event.target.value)}>
+            {models.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.label}
+              </option>
+            ))}
+          </select>
+        )
+      case 'workflow_select':
+        return (
+          <select value={String(value)} onChange={(event) => setValue(field.name, event.target.value)}>
+            <option value="">Select workflow…</option>
+            {workflows
+              .filter((workflow) => workflow.id !== currentWorkflowId)
+              .map((workflow) => (
+                <option key={workflow.id} value={workflow.id}>
+                  {workflow.name}
+                </option>
+              ))}
+          </select>
+        )
+      case 'connector_select':
+        return (
+          <select
+            value={String(value)}
+            onChange={(event) => {
+              onNodeConfigChange(node.id, {
+                ...config,
+                connector: event.target.value,
+                action: '',
+                credential: '',
+              })
+            }}
+          >
+            <option value="">— choose integration —</option>
+            {connectors.map((c) => (
+              <option key={c.type} value={c.type}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        )
+      case 'action_select': {
+        const connectorDef = connectors.find((c) => c.type === config.connector)
+        return (
+          <select value={String(value)} onChange={(event) => setValue(field.name, event.target.value)}>
+            <option value="">— choose action —</option>
+            {Object.entries(connectorDef?.actions ?? {}).map(([actionName, def]) => (
+              <option key={actionName} value={actionName} title={def.description}>
+                {actionName}
+              </option>
+            ))}
+          </select>
+        )
+      }
+      case 'credential_select': {
+        const matching = credentials.filter((c) => c.connector_type === config.connector)
+        return (
+          <select value={String(value)} onChange={(event) => setValue(field.name, event.target.value)}>
+            <option value="">
+              {matching.length ? '— choose credential —' : 'No credentials for this integration'}
+            </option>
+            {matching.map((c) => (
+              <option key={c.name} value={c.name}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        )
+      }
+      case 'mcp_server_select':
+        return (
+          <select
+            value={String(value)}
+            onChange={(event) => {
+              onNodeConfigChange(node.id, {
+                ...config,
+                server: event.target.value,
+                tool: '',
+              })
+            }}
+          >
+            <option value="">
+              {mcpServers.length ? '— choose MCP server —' : 'No MCP servers registered'}
+            </option>
+            {mcpServers.map((server) => (
+              <option key={server.name} value={server.name}>
+                {server.name}
+              </option>
+            ))}
+          </select>
+        )
+      case 'mcp_tool_select':
+        return (
+          <McpToolSelect
+            server={String(config.server ?? '')}
+            value={String(value)}
+            onChange={(tool) => setValue(field.name, tool)}
+          />
+        )
+      case 'tool_select':
+        return (
+          <select value={String(value)} onChange={(event) => setValue(field.name, event.target.value)}>
+            <option value="">— choose a tool —</option>
+            {tools.map((tool) => (
+              <option key={tool.name} value={tool.name}>
+                {tool.name}
+              </option>
+            ))}
+          </select>
+        )
+      case 'tool_multiselect': {
+        const selected = Array.isArray(value) ? (value as string[]) : []
+        return (
+          <div className="tool-multiselect">
+            {tools.map((tool) => (
+              <label key={tool.name} title={tool.description}>
+                <input
+                  type="checkbox"
+                  checked={selected.includes(tool.name)}
+                  onChange={(event) =>
+                    setValue(
+                      field.name,
+                      event.target.checked
+                        ? [...selected, tool.name]
+                        : selected.filter((name) => name !== tool.name),
+                    )
+                  }
+                />
+                {tool.name}
+              </label>
+            ))}
+          </div>
+        )
+      }
+      case 'flow_select': {
+        const pattern = flows.find((f) => f.id === value)
+        return (
+          <div>
+            <select
+              value={String(value)}
+              onChange={(event) => {
+                const next = flows.find((f) => f.id === event.target.value)
+                // Reset params to the new pattern's defaults
+                const params: Record<string, unknown> = {}
+                next?.params.forEach((p) => {
+                  if (p.default !== undefined) params[p.name] = p.default
+                })
+                onNodeConfigChange(node.id, { ...config, flow_type: event.target.value, params })
+              }}
+            >
+              {flows.map((flow) => (
+                <option key={flow.id} value={flow.id} title={flow.description}>
+                  {flow.label}
+                </option>
+              ))}
+            </select>
+            {pattern && (
+              <p className="config-subtitle flow-pattern-hint">
+                {pattern.description} {pattern.order_hint}
+              </p>
+            )}
+          </div>
+        )
+      }
+      case 'agent_list':
+        return (
+          <FlowAgentListEditor
+            agents={Array.isArray(value) ? (value as FlowAgentSpec[]) : []}
+            models={models}
+            minAgents={flows.find((f) => f.id === config.flow_type)?.min_agents ?? 1}
+            onChange={(agents) => setValue(field.name, agents)}
+          />
+        )
+      case 'json':
+        return (
+          <textarea
+            defaultValue={JSON.stringify(value ?? {}, null, 2)}
+            rows={5}
+            spellCheck={false}
+            onBlur={(event) => {
+              try {
+                setValue(field.name, JSON.parse(event.target.value || '{}'))
+                event.target.classList.remove('invalid')
+              } catch {
+                event.target.classList.add('invalid')
+              }
+            }}
+          />
+        )
+      default:
+        return (
+          <input
+            value={String(value)}
+            placeholder={field.placeholder}
+            onChange={(event) => setValue(field.name, event.target.value)}
+          />
+        )
+    }
+  }
+
+  return (
+    <aside className="config-panel">
+      <h2>{def?.label ?? node.data.nodeType}</h2>
+      <p className="config-subtitle">{def?.description}</p>
+      <label className="field">
+        <span>Label</span>
+        <input
+          value={node.data.label}
+          onChange={(event) => onNodeConfigChange(node.id, config, event.target.value)}
+        />
+      </label>
+      {def?.config_fields.map((field) => (
+        <label className="field" key={field.name}>
+          <span>
+            {field.name}
+            {field.required ? ' *' : ''}
+          </span>
+          {renderField(field)}
+        </label>
+      ))}
+      {node.data.nodeType === 'flow' && (
+        <FlowParamsFields
+          pattern={flows.find((f) => f.id === config.flow_type)}
+          params={(config.params as Record<string, unknown> | undefined) ?? {}}
+          onChange={(params) => setValue('params', params)}
+        />
+      )}
+      {node.data.nodeType === 'tool' && config.tool_name ? (
+        <ToolParamsHint tool={tools.find((t) => t.name === config.tool_name)} />
+      ) : null}
+      {node.data.nodeType === 'connector' && config.connector && config.action ? (
+        <ConnectorParamsHint
+          connector={connectors.find((c) => c.type === config.connector)}
+          action={String(config.action)}
+        />
+      ) : null}
+      {node.data.nodeType === 'mcp' && config.server && config.tool ? (
+        <McpParamsHint server={String(config.server)} tool={String(config.tool)} />
+      ) : null}
+      {['tool', 'agent', 'connector', 'mcp', 'flow'].includes(node.data.nodeType) && (
+        <p className="expression-hint">
+          Tip: reference an upstream node's output with{' '}
+          <code>{'{{ node_id.data.result }}'}</code>
+        </p>
+      )}
+      {['agent', 'tool', 'connector', 'mcp'].includes(node.data.nodeType) && (
+        <ExecutionPolicyFields
+          policy={(config.execution as Record<string, unknown> | undefined) ?? {}}
+          onChange={(policy) => setValue('execution', policy)}
+        />
+      )}
+      {nodeResult && (
+        <div className="node-output">
+          <h3>
+            Last run{' '}
+            <span className={`node-output-status status-${nodeResult.status}`}>
+              {nodeResult.status}
+            </span>
+            {nodeResult.duration_ms != null && (
+              <span className="node-output-duration">{nodeResult.duration_ms}ms</span>
+            )}
+          </h3>
+          {nodeResult.error && <p className="error-text">{nodeResult.error}</p>}
+          <pre>{JSON.stringify(nodeResult.output, null, 2)}</pre>
+        </div>
+      )}
+      <button className="danger" onClick={() => onDeleteNode(node.id)}>
+        Delete node
+      </button>
+    </aside>
+  )
+}
+
+function FlowAgentListEditor({
+  agents,
+  models,
+  minAgents,
+  onChange,
+}: {
+  agents: FlowAgentSpec[]
+  models: ModelOption[]
+  minAgents: number
+  onChange: (agents: FlowAgentSpec[]) => void
+}) {
+  const update = (index: number, patch: Partial<FlowAgentSpec>) => {
+    onChange(agents.map((agent, i) => (i === index ? { ...agent, ...patch } : agent)))
+  }
+  const move = (index: number, delta: number) => {
+    const target = index + delta
+    if (target < 0 || target >= agents.length) return
+    const next = [...agents]
+    ;[next[index], next[target]] = [next[target], next[index]]
+    onChange(next)
+  }
+  return (
+    <div className="flow-agent-list">
+      {agents.map((agent, index) => (
+        <div className="flow-agent-card" key={index}>
+          <div className="flow-agent-card-header">
+            <span className="flow-agent-index">Agent {index + 1}</span>
+            <span className="flow-agent-actions">
+              <button title="Move up" disabled={index === 0} onClick={() => move(index, -1)}>
+                ↑
+              </button>
+              <button
+                title="Move down"
+                disabled={index === agents.length - 1}
+                onClick={() => move(index, 1)}
+              >
+                ↓
+              </button>
+              <button
+                className="danger"
+                title="Remove agent"
+                onClick={() => onChange(agents.filter((_, i) => i !== index))}
+              >
+                ✕
+              </button>
+            </span>
+          </div>
+          <input
+            value={agent.role ?? ''}
+            placeholder="Role, e.g. Critic"
+            onChange={(event) => update(index, { role: event.target.value })}
+          />
+          <textarea
+            value={agent.goal ?? ''}
+            placeholder="Goal"
+            rows={2}
+            onChange={(event) => update(index, { goal: event.target.value })}
+          />
+          <div className="flow-agent-row">
+            <select
+              value={agent.llm_model ?? models[0]?.id ?? ''}
+              onChange={(event) => update(index, { llm_model: event.target.value })}
+            >
+              {models.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.label}
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              value={agent.temperature ?? 0.7}
+              min={0}
+              max={1}
+              step={0.1}
+              title="Temperature"
+              onChange={(event) => update(index, { temperature: Number(event.target.value) })}
+            />
+          </div>
+        </div>
+      ))}
+      {agents.length < minAgents && (
+        <p className="error-text">This pattern needs at least {minAgents} agents.</p>
+      )}
+      <button
+        className="refresh-button"
+        onClick={() =>
+          onChange([...agents, { role: '', goal: '', llm_model: models[0]?.id, temperature: 0.7 }])
+        }
+      >
+        + Add agent
+      </button>
+    </div>
+  )
+}
+
+function FlowParamsFields({
+  pattern,
+  params,
+  onChange,
+}: {
+  pattern: FlowPatternDef | undefined
+  params: Record<string, unknown>
+  onChange: (params: Record<string, unknown>) => void
+}) {
+  if (!pattern?.params.length) return null
+  return (
+    <details className="advanced-section" open>
+      <summary>Pattern settings</summary>
+      {pattern.params.map((spec) => (
+        <label className="field" key={spec.name}>
+          <span>{spec.name}</span>
+          <input
+            type="number"
+            value={Number(params[spec.name] ?? spec.default ?? 0)}
+            min={spec.min}
+            max={spec.max}
+            step={spec.max !== undefined && spec.max <= 1 ? 0.05 : 1}
+            onChange={(event) =>
+              onChange({ ...params, [spec.name]: Number(event.target.value) })
+            }
+          />
+        </label>
+      ))}
+    </details>
+  )
+}
+
+function useMcpTools(server: string): { tools: McpToolInfo[]; error: string | null } {
+  const [tools, setTools] = useState<McpToolInfo[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!server) {
+      setTools([])
+      return
+    }
+    let cancelled = false
+    setError(null)
+    listMcpServerTools(server)
+      .then((result) => {
+        if (!cancelled) setTools(result)
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setTools([])
+          setError((err as Error).message)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [server])
+
+  return { tools, error }
+}
+
+function McpToolSelect({
+  server,
+  value,
+  onChange,
+}: {
+  server: string
+  value: string
+  onChange: (tool: string) => void
+}) {
+  const { tools, error } = useMcpTools(server)
+  if (!server) return <select disabled><option>choose a server first</option></select>
+  if (error) return <p className="error-text">Server unreachable: {error}</p>
+  return (
+    <select value={value} onChange={(event) => onChange(event.target.value)}>
+      <option value="">— choose tool —</option>
+      {tools.map((tool) => (
+        <option key={tool.name} value={tool.name} title={tool.description}>
+          {tool.name}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+function McpParamsHint({ server, tool }: { server: string; tool: string }) {
+  const { tools } = useMcpTools(server)
+  const def = tools.find((t) => t.name === tool)
+  if (!def) return null
+  const required = new Set(def.input_schema.required ?? [])
+  const properties = def.input_schema.properties ?? {}
+  return (
+    <div className="tool-params-hint">
+      <span>
+        {def.description || tool}. Params for <code>{tool}</code>:
+      </span>
+      <ul>
+        {Object.entries(properties).map(([name, spec]) => (
+          <li key={name}>
+            <code>{name}</code>
+            {required.has(name) ? ' (required)' : ''} — {spec.description ?? spec.type ?? ''}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function ExecutionPolicyFields({
+  policy,
+  onChange,
+}: {
+  policy: Record<string, unknown>
+  onChange: (policy: Record<string, unknown>) => void
+}) {
+  return (
+    <details className="advanced-section">
+      <summary>Advanced: retries & errors</summary>
+      <label className="field">
+        <span>Retry count</span>
+        <input
+          type="number"
+          min={0}
+          max={10}
+          value={Number(policy.retry_count ?? 0)}
+          onChange={(e) => onChange({ ...policy, retry_count: Number(e.target.value) })}
+        />
+      </label>
+      <label className="field">
+        <span>Timeout (seconds, 0 = none)</span>
+        <input
+          type="number"
+          min={0}
+          value={Number(policy.timeout_seconds ?? 0)}
+          onChange={(e) => {
+            const v = Number(e.target.value)
+            const next = { ...policy }
+            if (v > 0) next.timeout_seconds = v
+            else delete next.timeout_seconds
+            onChange(next)
+          }}
+        />
+      </label>
+      <label className="field field-checkbox">
+        <input
+          type="checkbox"
+          checked={Boolean(policy.continue_on_error)}
+          onChange={(e) => onChange({ ...policy, continue_on_error: e.target.checked })}
+        />
+        <span>Continue workflow if this node fails</span>
+      </label>
+    </details>
+  )
+}
+
+function ConnectorParamsHint({
+  connector,
+  action,
+}: {
+  connector: ConnectorDef | undefined
+  action: string
+}) {
+  const def = connector?.actions[action]
+  if (!def) return null
+  return (
+    <div className="tool-params-hint">
+      <span>
+        {def.description}. Params for <code>{action}</code>:
+      </span>
+      <ul>
+        {def.params.map((param) => (
+          <li key={param.name}>
+            <code>{param.name}</code>
+            {param.required ? ' (required)' : ''}
+            {param.example !== undefined ? ` — e.g. ${JSON.stringify(param.example)}` : ''}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function ToolParamsHint({ tool }: { tool: ToolDef | undefined }) {
+  if (!tool?.parameters?.properties) return null
+  const required = new Set(tool.parameters.required ?? [])
+  return (
+    <div className="tool-params-hint">
+      <span>Parameters for {tool.name}:</span>
+      <ul>
+        {Object.entries(tool.parameters.properties).map(([name, spec]) => (
+          <li key={name}>
+            <code>{name}</code>
+            {required.has(name) ? ' (required)' : ''} — {spec.description ?? spec.type}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
