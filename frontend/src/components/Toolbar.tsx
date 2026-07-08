@@ -15,6 +15,7 @@ interface ToolbarProps {
   onDelete: () => void
   onRun: () => void
   onImportYaml: (yamlText: string) => void
+  onGenerate: () => void
 }
 
 export function Toolbar({
@@ -30,6 +31,7 @@ export function Toolbar({
   onDelete,
   onRun,
   onImportYaml,
+  onGenerate,
 }: ToolbarProps) {
   const importFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -60,6 +62,7 @@ export function Toolbar({
           ))}
         </select>
         <button onClick={onNew}>New</button>
+        <button onClick={onGenerate}>✨ Generate…</button>
         <button onClick={onSave}>Save</button>
         <label className="button-file">
           Import YAML…

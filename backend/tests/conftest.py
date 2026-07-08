@@ -42,6 +42,10 @@ def client(tmp_path, monkeypatch):
 
     monkeypatch.setattr(run_manager_module, "_manager", None)
 
+    import app.generation as generation
+
+    monkeypatch.setattr(generation, "_memory", None)
+
     with TestClient(create_app()) as test_client:
         yield test_client
 

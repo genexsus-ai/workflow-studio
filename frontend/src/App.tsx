@@ -17,6 +17,7 @@ import { AutomationPanel } from './components/AutomationPanel'
 import { Canvas } from './components/Canvas'
 import { ConfigPanel } from './components/ConfigPanel'
 import { CredentialsPanel } from './components/CredentialsPanel'
+import { GenerateDialog } from './components/GenerateDialog'
 import { McpServersPanel } from './components/McpServersPanel'
 import { Palette } from './components/Palette'
 import { RunPanel } from './components/RunPanel'
@@ -35,6 +36,8 @@ export default function App() {
   const [selectedNode, setSelectedNode] = useState<StudioNode | null>(null)
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null)
   const [runOpen, setRunOpen] = useState(false)
+  const [generateOpen, setGenerateOpen] = useState(false)
+  const [lastGenerationId, setLastGenerationId] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
   const [runEvents, setRunEvents] = useState<RunEvent[]>([])
   const [nodeResults, setNodeResults] = useState<Record<string, NodeResult>>({})
@@ -230,10 +233,16 @@ export default function App() {
       setDirty(false)
       setBanner(`Saved "${saved.name}"`)
       refreshWorkflows()
+      if (lastGenerationId) {
+        // Saving a generated draft marks it accepted so future generations
+        // learn from it; best-effort, failures are invisible to the user.
+        api.acceptGeneration(lastGenerationId).catch(() => undefined)
+        setLastGenerationId(null)
+      }
     } catch (err) {
       setBanner(`Save failed: ${(err as Error).message}`)
     }
-  }, [currentId, currentDoc, refreshWorkflows])
+  }, [currentId, currentDoc, refreshWorkflows, lastGenerationId])
 
   const onLoad = useCallback(
     async (id: string) => {
@@ -277,6 +286,43 @@ export default function App() {
       }
     },
     [colorFor, refreshWorkflows],
+  )
+
+  const onGenerated = useCallback(
+    (result: api.GenerateResult) => {
+      const doc = result.workflow
+      const flow = docToFlow(doc, colorFor)
+      setNodes(flow.nodes)
+      setEdges(flow.edges)
+      setWorkflowName(doc.name)
+      setCurrentId(null)
+      setLastGenerationId(result.generation_id)
+      setAutomation(doc.automation ?? defaultAutomation)
+      setSharedMemory(Boolean(doc.shared_memory))
+      setDirty(true)
+      setSelectedNode(null)
+      setSelectedEdge(null)
+      const notes: string[] = [`Generated draft "${doc.name}" — review and save`]
+      if (result.open_questions.length > 0) {
+        notes.push(
+          `${result.open_questions.length} open question${result.open_questions.length === 1 ? '' : 's'}: ` +
+            result.open_questions.map((question) => question.question).join(' | '),
+        )
+      }
+      if (result.review && !result.review.approved) {
+        notes.push(`Reviewer concerns: ${result.review.issues.join(' | ')}`)
+      }
+      const validationErrors = result.validation?.issues?.filter(
+        (issue) => issue.level === 'error',
+      )
+      if (validationErrors && validationErrors.length > 0) {
+        notes.push(
+          `Validation: ${validationErrors.map((issue) => issue.message).join(' | ')}`,
+        )
+      }
+      setBanner(notes.join(' — '))
+    },
+    [colorFor],
   )
 
   const onNew = useCallback(() => {
@@ -372,6 +418,13 @@ export default function App() {
           onDelete={onDelete}
           onImportYaml={onImportYaml}
           onRun={() => setRunOpen(true)}
+          onGenerate={() => setGenerateOpen(true)}
+        />
+        <GenerateDialog
+          open={generateOpen}
+          onClose={() => setGenerateOpen(false)}
+          onGenerated={onGenerated}
+          currentDoc={nodes.length > 0 ? currentDoc : null}
         />
         {banner && (
           <div className="banner" onClick={() => setBanner(null)}>

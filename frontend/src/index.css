@@ -837,3 +837,109 @@ button.danger {
   border-radius: 6px;
   font-size: 11px;
 }
+
+/* ------------------------------------------------------- generate dialog */
+
+.generate-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.generate-dialog {
+  background: white;
+  border-radius: 10px;
+  padding: 20px;
+  width: 520px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.3);
+}
+
+.generate-dialog h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.generate-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.generate-dialog textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.generate-crew {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  font-size: 13px;
+  color: #334155;
+}
+
+.generate-log {
+  margin: 10px 0;
+  padding: 10px 10px 10px 26px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #334155;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.generate-log li {
+  margin-bottom: 3px;
+}
+
+.generate-error {
+  margin: 10px 0;
+  padding: 8px 10px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.generate-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.generate-actions button {
+  padding: 8px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.generate-actions button.primary {
+  border: none;
+  background: #2563eb;
+  color: white;
+  font-weight: 600;
+}
+
+.generate-actions button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

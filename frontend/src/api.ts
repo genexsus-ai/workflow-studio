@@ -117,6 +117,79 @@ export async function streamRun(
   }
 }
 
+export interface GenerateProgressEvent {
+  event: 'progress' | 'complete' | 'error'
+  stage?: string
+  message?: string
+  [key: string]: unknown
+}
+
+export interface GenerateResult {
+  workflow: WorkflowDoc
+  open_questions: { question: string; default_assumption?: string }[]
+  review: { approved: boolean; issues: string[] } | null
+  warnings: string[]
+  validation: ValidationResult
+  generation_id: string | null
+}
+
+export async function generateWorkflow(
+  prompt: string,
+  crew: boolean,
+  onEvent: (event: GenerateProgressEvent) => void,
+  model?: string,
+  currentWorkflow?: WorkflowDoc,
+): Promise<GenerateResult> {
+  const response = await fetch(`${API}/workflows/generate/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt,
+      crew,
+      ...(model ? { model } : {}),
+      ...(currentWorkflow ? { current_workflow: currentWorkflow } : {}),
+    }),
+  })
+  if (!response.ok || !response.body) {
+    let detail = response.statusText
+    try {
+      const body = await response.json()
+      detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
+    } catch {
+      /* keep statusText */
+    }
+    throw new Error(detail)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let result: GenerateResult | null = null
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const chunks = buffer.split('\n\n')
+    buffer = chunks.pop() ?? ''
+    for (const chunk of chunks) {
+      const line = chunk.trim()
+      if (!line.startsWith('data: ')) continue
+      const event = JSON.parse(line.slice(6)) as GenerateProgressEvent
+      onEvent(event)
+      if (event.event === 'complete') {
+        result = event as unknown as GenerateResult
+      } else if (event.event === 'error') {
+        throw new Error(event.message ?? 'generation failed')
+      }
+    }
+  }
+  if (!result) throw new Error('generation stream ended without a result')
+  return result
+}
+
+export const acceptGeneration = (generationId: string) =>
+  fetch(`${API}/workflows/generate/${generationId}/accept`, { method: 'POST' })
+
 export const updateAutomation = (id: string, config: AutomationConfig) =>
   fetch(`${API}/workflows/${id}/automation`, {
     method: 'POST',

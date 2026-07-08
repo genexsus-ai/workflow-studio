@@ -91,6 +91,15 @@ class CredentialCreate(BaseModel):
     config: dict[str, Any] = Field(default_factory=dict)
 
 
+class GenerateRequest(BaseModel):
+    prompt: str
+    model: str = "claude-sonnet-5"
+    crew: bool = True
+    # When set, `prompt` is a modification instruction for this document
+    # (refine mode) instead of a from-scratch request.
+    current_workflow: "WorkflowDoc | None" = None
+
+
 class AdhocRunRequest(BaseModel):
     workflow: WorkflowDoc
     input: dict[str, Any] = Field(default_factory=dict)

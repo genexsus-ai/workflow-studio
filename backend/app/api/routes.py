@@ -22,6 +22,7 @@ from app.schemas import (
     AdhocRunRequest,
     AutomationConfig,
     CredentialCreate,
+    GenerateRequest,
     MCPServerCreate,
     RunRequest,
     ValidationResult,
@@ -97,6 +98,92 @@ def update_workflow(workflow_id: str, doc: WorkflowDoc) -> WorkflowDoc:
 def delete_workflow(workflow_id: str) -> None:
     if not get_store().delete(workflow_id):
         raise HTTPException(status_code=404, detail="Workflow not found")
+
+
+@router.post("/workflows/generate")
+async def generate_workflow_endpoint(payload: GenerateRequest) -> dict:
+    """Generate (or refine, when current_workflow is set) a draft WorkflowDoc."""
+    from app.generation import generate_workflow_doc
+
+    try:
+        return await generate_workflow_doc(
+            payload.prompt,
+            model=payload.model,
+            crew=payload.crew,
+            current_workflow=(
+                payload.current_workflow.model_dump() if payload.current_workflow else None
+            ),
+        )
+    except Exception as exc:  # pragma: no cover - provider/config failures
+        raise HTTPException(status_code=422, detail=f"generation failed: {exc}") from exc
+
+
+@router.post("/workflows/generate/{generation_id}/accept")
+def accept_generation(generation_id: str) -> dict:
+    """Mark a generated draft as accepted (the user kept/saved it).
+
+    Accepted drafts are weighted up when the planner recalls past plans for
+    similar future requests.
+    """
+    from app.generation import get_generation_memory
+
+    if not get_generation_memory().mark_accepted(generation_id):
+        raise HTTPException(status_code=404, detail="Unknown generation id")
+    return {"accepted": True}
+
+
+@router.post("/workflows/generate/stream")
+async def generate_workflow_stream(payload: GenerateRequest) -> StreamingResponse:
+    """Generate a draft workflow, streaming per-stage progress as SSE.
+
+    Emits {"event": "progress", "stage": ..., ...} events while the crew
+    works, then {"event": "complete", ...payload} or {"event": "error"}.
+    """
+    import asyncio
+
+    from app.generation import generate_workflow_doc
+
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def on_event(stage: str, data: dict) -> None:
+        # Generation runs on this same event loop, so a direct put keeps
+        # progress events ordered ahead of the final "complete" event.
+        queue.put_nowait({"event": "progress", "stage": stage, **data})
+
+    async def _generate() -> None:
+        try:
+            result = await generate_workflow_doc(
+                payload.prompt,
+                model=payload.model,
+                crew=payload.crew,
+                on_event=on_event,
+                current_workflow=(
+                    payload.current_workflow.model_dump()
+                    if payload.current_workflow
+                    else None
+                ),
+            )
+            await queue.put({"event": "complete", **result})
+        except Exception as exc:  # pragma: no cover - surfaced to the stream
+            await queue.put({"event": "error", "message": str(exc)})
+
+    task = asyncio.create_task(_generate())
+
+    async def _stream():
+        try:
+            while True:
+                event = await queue.get()
+                yield f"data: {json.dumps(event, default=str)}\n\n"
+                if event.get("event") in {"complete", "error"}:
+                    break
+        finally:
+            task.cancel()
+
+    return StreamingResponse(
+        _stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/workflows/validate", response_model=ValidationResult)
