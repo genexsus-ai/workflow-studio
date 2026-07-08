@@ -209,6 +209,18 @@ export default function App() {
     [workflowName, nodes, edges, currentId, automation, sharedMemory],
   )
 
+  // Input fields the workflow references via {{ input.* }} templates —
+  // used to pre-fill the Run dialog with the right JSON skeleton.
+  const suggestedInput = useMemo(() => {
+    const serialized = JSON.stringify(nodes.map((node) => node.data.config))
+    const keys = new Set<string>()
+    for (const match of serialized.matchAll(/\{\{\s*input\.([A-Za-z0-9_]+)/g)) {
+      keys.add(match[1])
+    }
+    if (keys.size === 0) return null
+    return Object.fromEntries([...keys].map((key) => [key, '']))
+  }, [nodes])
+
   const onSave = useCallback(async () => {
     try {
       const saved = currentId
@@ -294,7 +306,7 @@ export default function App() {
   }, [])
 
   const onStartRun = useCallback(
-    async (input: Record<string, unknown>) => {
+    async (input: Record<string, unknown>, modelOverride?: string) => {
       setRunning(true)
       setRunError(null)
       setRunEvents([])
@@ -312,7 +324,7 @@ export default function App() {
             const result = event.data.result as { node_results?: Record<string, NodeResult> } | undefined
             if (result?.node_results) setNodeResults(result.node_results)
           }
-        })
+        }, modelOverride)
       } catch (err) {
         setRunError((err as Error).message)
       } finally {
@@ -401,6 +413,8 @@ export default function App() {
               running={running}
               events={runEvents}
               error={runError}
+              models={palette?.models ?? []}
+              suggestedInput={suggestedInput}
               onClose={() => setRunOpen(false)}
               onStart={onStartRun}
             />

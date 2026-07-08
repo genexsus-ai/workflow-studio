@@ -332,6 +332,11 @@ button.danger {
   font-size: 12px;
 }
 
+.warning-text {
+  color: #b45309;
+  font-size: 12px;
+}
+
 .event-log {
   max-height: 220px;
   overflow-y: auto;

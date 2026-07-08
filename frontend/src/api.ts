@@ -81,11 +81,12 @@ export async function streamRun(
   doc: WorkflowDoc,
   input: Record<string, unknown>,
   onEvent: (event: RunEvent) => void,
+  modelOverride?: string,
 ): Promise<void> {
   const response = await fetch(`${API}/run/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ workflow: doc, input }),
+    body: JSON.stringify({ workflow: doc, input, model_override: modelOverride || null }),
   })
   if (!response.ok || !response.body) {
     let detail = response.statusText
