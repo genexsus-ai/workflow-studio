@@ -191,13 +191,15 @@ async def generate_workflow_doc(
     crew: bool = False,
     on_event: Any = None,
     current_workflow: dict[str, Any] | None = None,
+    workflow_name: str | None = None,
 ) -> dict[str, Any]:
     """Generate (or refine) a draft WorkflowDoc from a natural-language prompt.
 
     With ``current_workflow`` set, ``prompt`` is treated as a modification
-    instruction for that document. Returns a payload with the doc plus
-    generation provenance the UI can surface (open questions, reviewer
-    verdict, warnings, generation_id for acceptance tracking).
+    instruction for that document. ``workflow_name`` overrides the AI-chosen
+    name on the returned doc. Returns a payload with the doc plus generation
+    provenance the UI can surface (open questions, reviewer verdict,
+    warnings, generation_id for acceptance tracking).
     """
     from genxai.llm.factory import LLMProviderFactory
 
@@ -231,6 +233,8 @@ async def generate_workflow_doc(
         await provider.aclose()
 
     doc = workflow_to_doc(result.workflow)
+    if workflow_name and workflow_name.strip():
+        doc.name = workflow_name.strip()
 
     from app.runner import validate
 

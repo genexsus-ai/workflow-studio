@@ -139,6 +139,7 @@ export async function generateWorkflow(
   onEvent: (event: GenerateProgressEvent) => void,
   model?: string,
   currentWorkflow?: WorkflowDoc,
+  name?: string,
 ): Promise<GenerateResult> {
   const response = await fetch(`${API}/workflows/generate/stream`, {
     method: 'POST',
@@ -147,6 +148,7 @@ export async function generateWorkflow(
       prompt,
       crew,
       ...(model ? { model } : {}),
+      ...(name ? { name } : {}),
       ...(currentWorkflow ? { current_workflow: currentWorkflow } : {}),
     }),
   })

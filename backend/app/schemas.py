@@ -95,6 +95,8 @@ class GenerateRequest(BaseModel):
     prompt: str
     model: str = "claude-sonnet-5"
     crew: bool = True
+    # When set, overrides the AI-chosen workflow name on the generated doc.
+    name: str | None = None
     # When set, `prompt` is a modification instruction for this document
     # (refine mode) instead of a from-scratch request.
     current_workflow: "WorkflowDoc | None" = None

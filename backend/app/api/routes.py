@@ -110,6 +110,7 @@ async def generate_workflow_endpoint(payload: GenerateRequest) -> dict:
             payload.prompt,
             model=payload.model,
             crew=payload.crew,
+            workflow_name=payload.name,
             current_workflow=(
                 payload.current_workflow.model_dump() if payload.current_workflow else None
             ),
@@ -157,6 +158,7 @@ async def generate_workflow_stream(payload: GenerateRequest) -> StreamingRespons
                 model=payload.model,
                 crew=payload.crew,
                 on_event=on_event,
+                workflow_name=payload.name,
                 current_workflow=(
                     payload.current_workflow.model_dump()
                     if payload.current_workflow

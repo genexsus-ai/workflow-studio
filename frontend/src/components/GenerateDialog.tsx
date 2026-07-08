@@ -42,6 +42,7 @@ function describe(event: { stage?: string; [key: string]: unknown }): string {
 
 export function GenerateDialog({ open, onClose, onGenerated, currentDoc }: GenerateDialogProps) {
   const [prompt, setPrompt] = useState('')
+  const [name, setName] = useState('')
   const [crew, setCrew] = useState(true)
   const [refine, setRefine] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -69,9 +70,13 @@ export function GenerateDialog({ open, onClose, onGenerated, currentDoc }: Gener
         },
         undefined,
         refine && canRefine && currentDoc ? currentDoc : undefined,
+        // Refine mode keeps the workflow's current name; otherwise use the
+        // optional name field (the AI names it when left empty).
+        refine && canRefine && currentDoc ? currentDoc.name : name.trim() || undefined,
       )
       onGenerated(result)
       setPrompt('')
+      setName('')
       setLog([])
       onClose()
     } catch (err) {
@@ -101,6 +106,15 @@ export function GenerateDialog({ open, onClose, onGenerated, currentDoc }: Gener
           disabled={busy}
           autoFocus
         />
+        {!(refine && canRefine) && (
+          <input
+            className="generate-name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Workflow name (optional — the AI picks one if empty)"
+            disabled={busy}
+          />
+        )}
         {canRefine && (
           <label className="generate-crew">
             <input

@@ -157,6 +157,27 @@ def test_generate_endpoint_returns_valid_doc(client, mock_planner_llm):
     assert validation.status_code == 200
 
 
+def test_generate_with_explicit_name_overrides_ai_name(client, mock_planner_llm):
+    response = client.post(
+        "/api/v1/workflows/generate",
+        json={
+            "prompt": "Classify tickets and notify slack",
+            "crew": False,
+            "name": "My Triage Pipeline",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["workflow"]["name"] == "My Triage Pipeline"
+
+    # Blank names fall back to the AI-chosen one.
+    response = client.post(
+        "/api/v1/workflows/generate",
+        json={"prompt": "Classify tickets and notify slack", "crew": False, "name": "   "},
+    )
+    assert response.json()["workflow"]["name"] == "Ticket Triage"
+
+
 def test_generation_recorded_and_acceptable(client, mock_planner_llm):
     response = client.post(
         "/api/v1/workflows/generate",
