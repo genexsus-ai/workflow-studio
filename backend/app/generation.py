@@ -37,6 +37,47 @@ def get_generation_memory() -> GenerationMemory:
 
 
 DEFAULT_GENERATION_MODEL = "claude-sonnet-5"
+_OPENAI_FALLBACK_MODEL = "gpt-4o"
+_ANTHROPIC_FALLBACK_MODEL = "claude-sonnet-5"
+
+
+def _resolve_model_and_key(requested: str) -> tuple[str, str | None]:
+    """Pick a model whose provider actually has an API key configured.
+
+    Keys come from the Studio settings (backend/.env) or the process
+    environment. When the requested model's provider has no key but the
+    other provider does, fall back to that provider's default model instead
+    of failing deep inside the SDK with an auth error.
+    """
+    import os
+
+    from app.config import get_settings
+
+    settings = get_settings()
+    anthropic_key = settings.anthropic_api_key or os.getenv("ANTHROPIC_API_KEY") or None
+    openai_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY") or None
+
+    wants_anthropic = requested.startswith("claude")
+    wants_openai = requested.startswith(("gpt", "o1", "o3"))
+
+    if wants_anthropic and not anthropic_key and openai_key:
+        logger.info(
+            "No Anthropic key configured; generating with %s instead of %s",
+            _OPENAI_FALLBACK_MODEL,
+            requested,
+        )
+        return _OPENAI_FALLBACK_MODEL, openai_key
+    if wants_openai and not openai_key and anthropic_key:
+        logger.info(
+            "No OpenAI key configured; generating with %s instead of %s",
+            _ANTHROPIC_FALLBACK_MODEL,
+            requested,
+        )
+        return _ANTHROPIC_FALLBACK_MODEL, anthropic_key
+
+    key = anthropic_key if wants_anthropic else openai_key if wants_openai else None
+    return requested, key
+
 
 _LAYOUT_X_START = 80.0
 _LAYOUT_X_GAP = 280.0
@@ -207,7 +248,14 @@ async def generate_workflow_doc(
     generate_fn = crew_generate_workflow if crew else generate_workflow
     memory = get_generation_memory()
 
-    provider = LLMProviderFactory.create_provider(model=model)
+    model, api_key = _resolve_model_and_key(model)
+    if api_key is None:
+        raise ValueError(
+            "No LLM API key configured — set OPENAI_API_KEY or ANTHROPIC_API_KEY "
+            "in the backend .env"
+        )
+
+    provider = LLMProviderFactory.create_provider(model=model, api_key=api_key)
     try:
         if current_workflow is not None:
             result = await refine_workflow(
@@ -248,4 +296,5 @@ async def generate_workflow_doc(
         "validation": validation.model_dump(),
         "llm_attempts": result.llm_attempts,
         "generation_id": result.generation_id,
+        "model": model,
     }

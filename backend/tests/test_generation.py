@@ -58,6 +58,7 @@ def mock_planner_llm(monkeypatch):
         "create_provider",
         lambda *args, **kwargs: StubProvider(model=kwargs.get("model", "stub")),
     )
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     return StubProvider
 
 
@@ -155,6 +156,33 @@ def test_generate_endpoint_returns_valid_doc(client, mock_planner_llm):
     # Generated doc passes the studio's own validate endpoint.
     validation = client.post("/api/v1/workflows/validate", json=doc)
     assert validation.status_code == 200
+
+
+def test_generate_falls_back_to_available_provider(client, mock_planner_llm):
+    """Default model is Claude, but with only an OpenAI key the request
+    must transparently run on the OpenAI fallback model instead of failing
+    with an SDK auth error."""
+    response = client.post(
+        "/api/v1/workflows/generate",
+        json={"prompt": "Classify tickets and notify slack", "crew": False},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["model"] == "gpt-4o"
+    # Generated agent nodes inherit the resolved model too.
+    agent_nodes = [n for n in payload["workflow"]["nodes"] if n["type"] == "agent"]
+    assert all(n["config"]["llm_model"] == "gpt-4o" for n in agent_nodes)
+
+
+def test_generate_without_any_key_gives_clear_error(client):
+    response = client.post(
+        "/api/v1/workflows/generate",
+        json={"prompt": "Summarize text", "crew": False},
+    )
+
+    assert response.status_code == 422
+    assert "No LLM API key configured" in response.text
 
 
 def test_generate_with_explicit_name_overrides_ai_name(client, mock_planner_llm):
