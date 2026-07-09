@@ -275,3 +275,18 @@ def test_generate_stream_emits_progress_then_complete(client, mock_planner_llm):
     assert "compiled" in stages
     assert events[-1]["event"] == "complete"
     assert events[-1]["workflow"]["name"] == "Ticket Triage"
+
+
+def test_email_connector_and_rss_tool_in_studio_catalog(client):
+    from app.generation import studio_capability_catalog
+
+    catalog = studio_capability_catalog()
+
+    assert "email.send_email" in catalog.names("connector")
+    assert "rss_reader" in catalog.names("tool")
+
+    palette = client.get("/api/v1/palette").json()
+    email = next(c for c in palette["connectors"] if c["type"] == "email")
+    assert "send_email" in email["actions"]
+    assert any(f["name"] == "password" and f.get("secret") for f in email["credential_fields"])
+    assert any(tool["name"] == "rss_reader" for tool in palette["tools"])

@@ -13,6 +13,7 @@ from typing import Any
 from app.credentials import get_credential_store
 from genxai.connectors import (
     Connector,
+    EmailConnector,
     GitHubConnector,
     GoogleWorkspaceConnector,
     JiraConnector,
@@ -22,6 +23,7 @@ from genxai.connectors import (
 from genxai.tools.base import Tool, ToolCategory, ToolMetadata, ToolParameter
 
 CONNECTOR_CLASSES: dict[str, type[Connector]] = {
+    "email": EmailConnector,
     "slack": SlackConnector,
     "github": GitHubConnector,
     "jira": JiraConnector,
@@ -30,6 +32,31 @@ CONNECTOR_CLASSES: dict[str, type[Connector]] = {
 }
 
 CONNECTOR_CATALOG: list[dict[str, Any]] = [
+    {
+        "type": "email",
+        "label": "Email",
+        "icon": "\u2709\ufe0f",
+        "color": "#0891b2",
+        "credential_fields": [
+            {"name": "host", "example": "smtp.gmail.com"},
+            {"name": "port", "example": "587"},
+            {"name": "username", "example": "you@example.com"},
+            {"name": "password", "secret": True},
+            {"name": "from_email", "example": "you@example.com"},
+        ],
+        "actions": {
+            "send_email": {
+                "description": "Send an email via SMTP",
+                "params": [
+                    {"name": "to", "required": True, "example": "someone@example.com"},
+                    {"name": "subject", "required": True, "example": "Daily digest"},
+                    {"name": "body", "required": True},
+                    {"name": "html", "required": False, "example": "false"},
+                    {"name": "cc", "required": False},
+                ],
+            },
+        },
+    },
     {
         "type": "slack",
         "label": "Slack",
