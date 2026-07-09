@@ -24,6 +24,7 @@ import { Palette } from './components/Palette'
 import { RunPanel } from './components/RunPanel'
 import { RunsPanel } from './components/RunsPanel'
 import { Toolbar } from './components/Toolbar'
+import { EXPANDABLE_PATTERNS } from './lib/flowExpansion'
 import { ATTACH_EDGE_STYLE, docToFlow, flowToDoc, nextNodeId, type StudioNode } from './lib/translate'
 import type { AutomationConfig, CredentialSummary, McpServerSummary, NodeResult, NodeRunStatus, Palette as PaletteData, RunEvent } from './types'
 
@@ -150,14 +151,18 @@ export default function App() {
     [palette, colorFor],
   )
 
-  // Flow picks carrying a team scaffold materialize as a flow node plus
-  // visible agent nodes attached to its Agents port (x order = agent order).
+  // Flow picks carrying a team scaffold materialize on the canvas. Graph-
+  // shaped patterns (round robin, coordinator/workers, map-reduce, parallel)
+  // expand into REAL wired agent nodes so the collaboration is visible;
+  // logic-shaped patterns (critic loops, voting, ...) become a team node
+  // with agents attached to its Agents port. entryIds are the nodes an
+  // upstream edge should connect to.
   const expandFlowTeam = useCallback(
     (
       picked: PickedNode,
       position: { x: number; y: number },
       taken: Set<string>,
-    ): { nodes: StudioNode[]; edges: Edge[] } => {
+    ): { nodes: StudioNode[]; edges: Edge[]; entryIds: string[] } => {
       const teamSpecs =
         picked.type === 'flow' && Array.isArray(picked.config?.agents)
           ? (picked.config.agents as {
@@ -168,26 +173,99 @@ export default function App() {
             }[])
           : []
       if (teamSpecs.length === 0) {
-        return { nodes: [buildNode(picked, position, taken)], edges: [] }
+        const node = buildNode(picked, position, taken)
+        return { nodes: [node], edges: [], entryIds: [node.id] }
       }
-      const flowNode = buildNode(
-        { ...picked, config: { ...picked.config, agents: [] } },
-        position,
-        taken,
-      )
-      const ids = new Set([...taken, flowNode.id])
-      const outNodes: StudioNode[] = [flowNode]
-      const outEdges: Edge[] = []
-      teamSpecs.forEach((spec, index) => {
+
+      const buildAgent = (
+        spec: (typeof teamSpecs)[number],
+        pos: { x: number; y: number },
+        ids: Set<string>,
+      ): StudioNode => {
         const config: Record<string, unknown> = { role: spec.role, goal: spec.goal }
         if (spec.backstory) config.backstory = spec.backstory
         if (spec.temperature !== undefined) config.temperature = spec.temperature
-        const agentNode = buildNode(
-          { type: 'agent', config, label: spec.role },
+        const node = buildNode({ type: 'agent', config, label: spec.role }, pos, ids)
+        ids.add(node.id)
+        return node
+      }
+
+      const flowType = String(picked.config?.flow_type ?? '')
+      const shape = EXPANDABLE_PATTERNS[flowType]
+      const ids = new Set(taken)
+
+      if (shape) {
+        const flowEdge = (source: string, target: string, parallel = false): Edge =>
+          ({
+            id: `e_${source}_${target}`,
+            source,
+            target,
+            sourceHandle: null,
+            targetHandle: null,
+            animated: parallel,
+            data: { condition: null, parallel, attach: null },
+          }) as Edge
+        const agents: StudioNode[] = []
+        const edges: Edge[] = []
+
+        if (shape === 'chain') {
+          teamSpecs.forEach((spec, i) => {
+            agents.push(buildAgent(spec, { x: position.x + i * 260, y: position.y }, ids))
+            if (i > 0) edges.push(flowEdge(agents[i - 1].id, agents[i].id))
+          })
+          return { nodes: agents, edges, entryIds: [agents[0].id] }
+        }
+        if (shape === 'fan_out') {
+          const [head, ...rest] = teamSpecs
+          const coordinator = buildAgent(head, position, ids)
+          agents.push(coordinator)
+          rest.forEach((spec, i) => {
+            const worker = buildAgent(
+              spec,
+              { x: position.x + 280, y: position.y - 80 + i * 170 },
+              ids,
+            )
+            agents.push(worker)
+            edges.push(flowEdge(coordinator.id, worker.id, rest.length > 1))
+          })
+          return { nodes: agents, edges, entryIds: [coordinator.id] }
+        }
+        if (shape === 'fan_in') {
+          const workers = teamSpecs.slice(0, -1)
+          const reducerSpec = teamSpecs[teamSpecs.length - 1]
+          const workerNodes = workers.map((spec, i) =>
+            buildAgent(spec, { x: position.x, y: position.y - 80 + i * 170 }, ids),
+          )
+          const reducer = buildAgent(reducerSpec, { x: position.x + 280, y: position.y }, ids)
+          workerNodes.forEach((worker) => edges.push(flowEdge(worker.id, reducer.id)))
+          return {
+            nodes: [...workerNodes, reducer],
+            edges,
+            entryIds: workerNodes.map((worker) => worker.id),
+          }
+        }
+        // parallel: side-by-side, upstream fans into all of them
+        teamSpecs.forEach((spec, i) => {
+          agents.push(buildAgent(spec, { x: position.x, y: position.y - 80 + i * 170 }, ids))
+        })
+        return { nodes: agents, edges, entryIds: agents.map((agent) => agent.id) }
+      }
+
+      // Logic-shaped pattern: one team node with attached member agents.
+      const flowNode = buildNode(
+        { ...picked, config: { ...picked.config, agents: [] } },
+        position,
+        ids,
+      )
+      ids.add(flowNode.id)
+      const outNodes: StudioNode[] = [flowNode]
+      const outEdges: Edge[] = []
+      teamSpecs.forEach((spec, index) => {
+        const agentNode = buildAgent(
+          spec,
           { x: position.x - 60 + index * 220, y: position.y + 150 },
           ids,
         )
-        ids.add(agentNode.id)
         outNodes.push(agentNode)
         outEdges.push({
           id: `attach_${agentNode.id}_${flowNode.id}`,
@@ -199,7 +277,7 @@ export default function App() {
           data: { condition: null, parallel: false, attach: 'agents' },
         } as Edge)
       })
-      return { nodes: outNodes, edges: outEdges }
+      return { nodes: outNodes, edges: outEdges, entryIds: [flowNode.id] }
     },
     [buildNode],
   )
@@ -224,19 +302,24 @@ export default function App() {
         new Set(nodes.map((n) => n.id)),
       )
       setNodes((current) => [...current, ...added.nodes])
-      setEdges((current) => [
-        ...addEdge(
-          {
-            source: sourceId,
-            target: added.nodes[0].id,
-            sourceHandle: null,
-            targetHandle: null,
-            data: { condition: null, parallel: false, attach: null },
-          },
-          current,
-        ),
-        ...added.edges,
-      ])
+      const fanOut = added.entryIds.length > 1
+      setEdges((current) => {
+        let next = current
+        for (const entryId of added.entryIds) {
+          next = addEdge(
+            {
+              source: sourceId,
+              target: entryId,
+              sourceHandle: null,
+              targetHandle: null,
+              animated: fanOut,
+              data: { condition: null, parallel: fanOut, attach: null },
+            },
+            next,
+          )
+        }
+        return [...next, ...added.edges]
+      })
       setDirty(true)
     },
     [nodes, expandFlowTeam],

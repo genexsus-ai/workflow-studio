@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { listMcpServerTools } from '../api'
+import { expansionHint } from '../lib/flowExpansion'
 import { nodeIcon } from '../lib/nodeIcons'
 import { loadRecents, saveRecent } from '../lib/recentPicks'
 import type { AgentPresetDef, ConnectorDef, FlowPatternDef, McpServerSummary, McpToolInfo, NodeTypeDef, ToolDef } from '../types'
@@ -125,7 +126,7 @@ function flowPatternEntry(
     icon: '👥',
     iconBg: `${color}1c`,
     label: pattern.label,
-    description: `${pattern.description} Starts with: ${slotSummary}.`,
+    description: `${pattern.description} Starts with: ${slotSummary}. ${expansionHint(pattern.id)}`,
     picked: {
       type: 'flow',
       config: {
