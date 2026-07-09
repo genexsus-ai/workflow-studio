@@ -192,6 +192,49 @@ export default function App() {
     [nodes, palette, colorFor],
   )
 
+  const onAddAttached = useCallback(
+    (agentId: string, port: 'model' | 'memory' | 'tools', type: string) => {
+      const agent = nodes.find((node) => node.id === agentId)
+      if (!agent) return
+      const taken = new Set(nodes.map((n) => n.id))
+      const id = nextNodeId(type, taken)
+      const def = palette?.node_types.find((t) => t.type === type)
+      const defaults: Record<string, unknown> = {}
+      def?.config_fields.forEach((field) => {
+        if (field.default !== undefined) defaults[field.name] = field.default
+      })
+      const portOffset = { model: -50, memory: 45, tools: 140 }[port]
+      const node: StudioNode = {
+        id,
+        type: 'studio',
+        position: { x: agent.position.x + portOffset, y: agent.position.y + 140 },
+        data: {
+          nodeType: type,
+          label: def?.label ? `${def.label} ${id.split('_').pop()}` : id,
+          config: defaults,
+          status: 'idle',
+          color: colorFor(type) ?? '#64748b',
+        },
+      }
+      setNodes((current) => [...current, node])
+      setEdges((current) =>
+        addEdge(
+          {
+            source: id,
+            target: agentId,
+            sourceHandle: 'attach',
+            targetHandle: `attach_${port}`,
+            style: ATTACH_EDGE_STYLE,
+            data: { condition: null, parallel: false, attach: port },
+          },
+          current,
+        ),
+      )
+      setDirty(true)
+    },
+    [nodes, palette, colorFor],
+  )
+
   const onNodeConfigChange = useCallback(
     (nodeId: string, config: Record<string, unknown>, label?: string) => {
       setNodes((current) =>
@@ -479,6 +522,7 @@ export default function App() {
             edges={edges}
             nodeDefs={palette?.node_types ?? []}
             onAddConnected={onAddConnected}
+            onAddAttached={onAddAttached}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}

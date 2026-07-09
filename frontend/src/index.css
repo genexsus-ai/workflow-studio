@@ -1197,3 +1197,46 @@ button.danger {
   color: #2563eb;
   background: #eff6ff;
 }
+
+/* "+" under free agent attachment ports */
+.studio-port-add {
+  position: absolute;
+  bottom: -48px;
+  transform: translateX(-50%);
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1.5px solid #94a3b8;
+  border-radius: 5px;
+  background: white;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    border-color 0.12s ease,
+    color 0.12s ease,
+    background 0.12s ease;
+  z-index: 4;
+}
+
+.studio-port-add::before {
+  content: '';
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  width: 1.8px;
+  height: 15px;
+  background: #cbd5e1;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.studio-port-add:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+  background: #eff6ff;
+}

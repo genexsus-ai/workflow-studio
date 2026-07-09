@@ -31,6 +31,12 @@ export function StudioNode({ id, data, selected }: NodeProps<StudioNodeType>) {
   const hasOutgoing = useStore((state) =>
     state.edges.some((edge) => edge.source === id && !edge.data?.attach),
   )
+  const attachedPorts = useStore((state) =>
+    state.edges
+      .filter((edge) => edge.target === id && edge.targetHandle?.startsWith('attach_'))
+      .map((edge) => edge.targetHandle)
+      .join(','),
+  )
   const ring = STATUS_COLORS[data.status] ?? 'transparent'
   const isCapability = CAPABILITY_TYPES.has(data.nodeType)
   const isTrigger = data.nodeType === 'trigger'
@@ -110,7 +116,7 @@ export function StudioNode({ id, data, selected }: NodeProps<StudioNodeType>) {
           aria-label="Add connected node"
           onClick={(event) => {
             event.stopPropagation()
-            openConnectPicker(id)
+            openConnectPicker({ nodeId: id })
           }}
         >
           +
@@ -139,6 +145,24 @@ export function StudioNode({ id, data, selected }: NodeProps<StudioNodeType>) {
               <span className="studio-port-label" style={{ left: port.left }}>
                 {port.label}
               </span>
+              {!attachedPorts.includes(port.id) && (
+                <button
+                  type="button"
+                  className="studio-port-add nodrag"
+                  style={{ left: port.left }}
+                  title={`Add ${port.label.toLowerCase()}`}
+                  aria-label={`Add ${port.label.toLowerCase()}`}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    openConnectPicker({
+                      nodeId: id,
+                      port: port.id.slice('attach_'.length) as 'model' | 'memory' | 'tools',
+                    })
+                  }}
+                >
+                  +
+                </button>
+              )}
             </div>
           ))}
         </div>

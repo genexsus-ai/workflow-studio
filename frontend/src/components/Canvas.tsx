@@ -13,7 +13,7 @@ import {
 } from '@xyflow/react'
 import { useCallback, useRef, useState } from 'react'
 
-import { ConnectPickerContext } from '../lib/connectContext'
+import { ConnectPickerContext, PORT_TYPES, type ConnectRequest } from '../lib/connectContext'
 import type { StudioNode } from '../lib/translate'
 import type { NodeTypeDef } from '../types'
 import { FirstStepPicker } from './FirstStepPicker'
@@ -32,6 +32,7 @@ interface CanvasProps {
   onSelectionChange: OnSelectionChangeFunc
   onDropNode: (type: string, position: { x: number; y: number }) => void
   onAddConnected: (sourceId: string, type: string) => void
+  onAddAttached: (agentId: string, port: 'model' | 'memory' | 'tools', type: string) => void
 }
 
 export function Canvas({
@@ -44,10 +45,11 @@ export function Canvas({
   onSelectionChange,
   onDropNode,
   onAddConnected,
+  onAddAttached,
 }: CanvasProps) {
   const { screenToFlowPosition } = useReactFlow()
   const wrapperRef = useRef<HTMLDivElement>(null)
-  const [connectFrom, setConnectFrom] = useState<string | null>(null)
+  const [connectFrom, setConnectFrom] = useState<ConnectRequest | null>(null)
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault()
@@ -102,10 +104,18 @@ export function Canvas({
       {nodes.length === 0 && <FirstStepPicker nodeDefs={nodeDefs} onPick={addAtCenter} />}
       {connectFrom && (
         <NodePicker
-          nodeDefs={nodeDefs.filter((def) => !['trigger', 'input'].includes(def.type))}
+          nodeDefs={
+            connectFrom.port
+              ? nodeDefs.filter((def) => PORT_TYPES[connectFrom.port!].includes(def.type))
+              : nodeDefs.filter((def) => !['trigger', 'input'].includes(def.type))
+          }
           onClose={() => setConnectFrom(null)}
           onPick={(type) => {
-            onAddConnected(connectFrom, type)
+            if (connectFrom.port) {
+              onAddAttached(connectFrom.nodeId, connectFrom.port, type)
+            } else {
+              onAddConnected(connectFrom.nodeId, type)
+            }
             setConnectFrom(null)
           }}
         />
