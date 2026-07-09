@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 
 import { nodeIcon } from '../lib/nodeIcons'
 import { loadRecents, saveRecent } from '../lib/recentPicks'
-import type { ConnectorDef, NodeTypeDef } from '../types'
+import type { AgentPresetDef, ConnectorDef, NodeTypeDef } from '../types'
 
 /** What a picker selection resolves to: a node type plus optional
  * pre-filled config (e.g. a connector app + action). */
@@ -18,13 +18,14 @@ interface PickerEntry {
   iconBg: string
   label: string
   description: string
-  drillInto?: ConnectorDef | 'apps'
+  drillInto?: ConnectorDef | 'apps' | 'agents'
   picked?: PickedNode
 }
 
 interface NodePickerProps {
   nodeDefs: NodeTypeDef[]
   connectors?: ConnectorDef[]
+  agentPresets?: AgentPresetDef[]
   onPick: (picked: PickedNode) => void
   onClose: () => void
 }
@@ -54,6 +55,36 @@ function appEntry(app: ConnectorDef): PickerEntry {
   }
 }
 
+function customAgentEntry(def: NodeTypeDef): PickerEntry {
+  return {
+    ...defEntry(def),
+    key: 'type:agent',
+    label: 'Custom agent',
+    description: 'Start from a blank agent and write its role and goal yourself',
+  }
+}
+
+function presetEntry(preset: AgentPresetDef, agentColor: string): PickerEntry {
+  return {
+    key: `preset:${preset.name}`,
+    icon: '🤖',
+    iconBg: `${agentColor}1c`,
+    label: preset.role,
+    description: preset.goal,
+    picked: {
+      type: 'agent',
+      config: {
+        role: preset.role,
+        goal: preset.goal,
+        backstory: preset.backstory,
+        temperature: preset.temperature,
+        tools: preset.tools,
+      },
+      label: preset.role,
+    },
+  }
+}
+
 function actionEntry(app: ConnectorDef, action: string, withAppName: boolean): PickerEntry {
   const spec = app.actions[action]
   return {
@@ -72,9 +103,15 @@ function actionEntry(app: ConnectorDef, action: string, withAppName: boolean): P
 
 /** Searchable right-side node picker panel (n8n-style): triggers, core
  * nodes, and connector apps with per-action search and drill-in. */
-export function NodePicker({ nodeDefs, connectors = [], onPick, onClose }: NodePickerProps) {
+export function NodePicker({
+  nodeDefs,
+  connectors = [],
+  agentPresets = [],
+  onPick,
+  onClose,
+}: NodePickerProps) {
   const [query, setQuery] = useState('')
-  const [view, setView] = useState<'root' | 'apps' | ConnectorDef>('root')
+  const [view, setView] = useState<'root' | 'apps' | 'agents' | ConnectorDef>('root')
 
   const pick = (picked: PickedNode, key: string) => {
     saveRecent(key)
@@ -88,8 +125,14 @@ export function NodePicker({ nodeDefs, connectors = [], onPick, onClose }: NodeP
     const coreDefs = nodeDefs.filter((def) => !TRIGGER_TYPES.has(def.type))
     const triggerDefs = nodeDefs.filter((def) => TRIGGER_TYPES.has(def.type))
 
+    const agentDef = nodeDefs.find((def) => def.type === 'agent')
     if (view === 'apps') {
       return [['Apps', connectors.map(appEntry)]]
+    }
+    if (view === 'agents') {
+      const entries = agentDef ? [customAgentEntry(agentDef)] : []
+      entries.push(...agentPresets.map((preset) => presetEntry(preset, agentDef?.color ?? '#8b5cf6')))
+      return [['Agents', entries]]
     }
     if (view !== 'root') {
       return [[view.label, Object.keys(view.actions).map((a) => actionEntry(view, a, false))]]
@@ -100,6 +143,11 @@ export function NodePicker({ nodeDefs, connectors = [], onPick, onClose }: NodeP
       const matchingDefs = [...triggerDefs, ...coreDefs]
         .filter((def) => `${def.label} ${def.type} ${def.description}`.toLowerCase().includes(needle))
         .map(defEntry)
+      const matchingPresets = agentPresets
+        .filter((preset) =>
+          `${preset.name} ${preset.role} ${preset.goal}`.toLowerCase().includes(needle),
+        )
+        .map((preset) => presetEntry(preset, agentDef?.color ?? '#8b5cf6'))
       const matchingActions = connectors.flatMap((app) => {
         const appMatch = `${app.label} ${app.type}`.toLowerCase().includes(needle)
         return Object.keys(app.actions)
@@ -110,7 +158,7 @@ export function NodePicker({ nodeDefs, connectors = [], onPick, onClose }: NodeP
           )
           .map((action) => actionEntry(app, action, true))
       })
-      return [['Results', [...matchingDefs, ...matchingActions]]]
+      return [['Results', [...matchingDefs, ...matchingPresets, ...matchingActions]]]
     }
 
     const byKey = new Map<string, PickerEntry>()
@@ -121,29 +169,42 @@ export function NodePicker({ nodeDefs, connectors = [], onPick, onClose }: NodeP
         byKey.set(`action:${app.type}:${action}`, actionEntry(app, action, true))
       }
     }
+    for (const preset of agentPresets) {
+      byKey.set(`preset:${preset.name}`, presetEntry(preset, agentDef?.color ?? '#8b5cf6'))
+    }
     const recents = loadRecents()
       .map((key) => byKey.get(key))
       .filter((entry): entry is PickerEntry => Boolean(entry))
       .slice(0, 4)
 
-    const coreEntries = coreDefs.map((def) =>
-      hasApps && def.type === 'connector'
-        ? {
-            ...defEntry(def),
-            key: 'drill:apps',
-            description: `${connectors.length} app${connectors.length === 1 ? '' : 's'}`,
-            picked: undefined,
-            drillInto: 'apps' as const,
-          }
-        : defEntry(def),
-    )
+    const coreEntries = coreDefs.map((def) => {
+      if (hasApps && def.type === 'connector') {
+        return {
+          ...defEntry(def),
+          key: 'drill:apps',
+          description: `${connectors.length} app${connectors.length === 1 ? '' : 's'}`,
+          picked: undefined,
+          drillInto: 'apps' as const,
+        }
+      }
+      if (agentPresets.length > 0 && def.type === 'agent') {
+        return {
+          ...defEntry(def),
+          key: 'drill:agents',
+          description: `Custom, or ${agentPresets.length} reusable role agents`,
+          picked: undefined,
+          drillInto: 'agents' as const,
+        }
+      }
+      return defEntry(def)
+    })
 
     const result: [string, PickerEntry[]][] = []
     if (recents.length > 0) result.push(['Recently used', recents])
     if (triggerDefs.length > 0) result.push(['Triggers', triggerDefs.map(defEntry)])
     result.push(['Core', coreEntries])
     return result
-  }, [nodeDefs, connectors, query, view])
+  }, [nodeDefs, connectors, agentPresets, query, view])
 
   const flatEntries = sections.flatMap(([, entries]) => entries)
 
@@ -164,9 +225,9 @@ export function NodePicker({ nodeDefs, connectors = [], onPick, onClose }: NodeP
           <button
             type="button"
             className="node-picker-back"
-            onClick={() => setView(view === 'apps' ? 'root' : 'apps')}
+            onClick={() => setView(view === 'apps' || view === 'agents' ? 'root' : 'apps')}
           >
-            {view === 'apps' ? '← All nodes' : '← Apps'}
+            {view === 'apps' || view === 'agents' ? '← All nodes' : '← Apps'}
           </button>
         ) : (
           <input

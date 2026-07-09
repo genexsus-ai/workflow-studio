@@ -290,3 +290,15 @@ def test_email_connector_and_rss_tool_in_studio_catalog(client):
     assert "send_email" in email["actions"]
     assert any(f["name"] == "password" and f.get("secret") for f in email["credential_fields"])
     assert any(tool["name"] == "rss_reader" for tool in palette["tools"])
+
+
+def test_palette_exposes_agent_presets(client):
+    palette = client.get("/api/v1/palette").json()
+
+    presets = palette["agent_presets"]
+    assert len(presets) >= 12
+    researcher = next(p for p in presets if p["name"] == "researcher")
+    assert researcher["role"] == "Research Specialist"
+    assert researcher["goal"]
+    assert researcher["backstory"]
+    assert "web_scraper" in researcher["tools"]

@@ -15,7 +15,7 @@ import { useCallback, useRef, useState } from 'react'
 
 import { ConnectPickerContext, PORT_TYPES, type ConnectRequest } from '../lib/connectContext'
 import type { StudioNode } from '../lib/translate'
-import type { ConnectorDef, NodeTypeDef } from '../types'
+import type { AgentPresetDef, ConnectorDef, NodeTypeDef } from '../types'
 import { FirstStepPicker } from './FirstStepPicker'
 import { NodePicker, type PickedNode } from './NodePicker'
 import { StudioNode as StudioNodeComponent } from './nodes/StudioNode'
@@ -27,6 +27,7 @@ interface CanvasProps {
   edges: Edge[]
   nodeDefs: NodeTypeDef[]
   connectors: ConnectorDef[]
+  agentPresets: AgentPresetDef[]
   onNodesChange: OnNodesChange<StudioNode>
   onEdgesChange: OnEdgesChange
   onConnect: OnConnect
@@ -41,6 +42,7 @@ export function Canvas({
   edges,
   nodeDefs,
   connectors,
+  agentPresets,
   onNodesChange,
   onEdgesChange,
   onConnect,
@@ -104,7 +106,12 @@ export function Canvas({
       </ReactFlow>
       </ConnectPickerContext.Provider>
       {nodes.length === 0 && (
-        <FirstStepPicker nodeDefs={nodeDefs} connectors={connectors} onPick={addAtCenter} />
+        <FirstStepPicker
+          nodeDefs={nodeDefs}
+          connectors={connectors}
+          agentPresets={agentPresets}
+          onPick={addAtCenter}
+        />
       )}
       {connectFrom && (
         <NodePicker
@@ -114,6 +121,7 @@ export function Canvas({
               : nodeDefs.filter((def) => !['trigger', 'input'].includes(def.type))
           }
           connectors={connectFrom.port ? [] : connectors}
+          agentPresets={connectFrom.port ? [] : agentPresets}
           onClose={() => setConnectFrom(null)}
           onPick={(picked) => {
             if (connectFrom.port) {

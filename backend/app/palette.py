@@ -357,6 +357,23 @@ NODE_TYPE_DEFS: list[dict[str, Any]] = [
 ]
 
 
+def _agent_presets() -> list[dict[str, Any]]:
+    """Reusable role agents from the genxai agent library, picker-ready."""
+    from genxai.agents.library import AGENT_LIBRARY
+
+    return [
+        {
+            "name": name,
+            "role": spec["role"],
+            "goal": spec["goal"],
+            "backstory": spec.get("backstory", ""),
+            "temperature": spec.get("llm_temperature", 0.7),
+            "tools": spec.get("tools", []),
+        }
+        for name, spec in sorted(AGENT_LIBRARY.items())
+    ]
+
+
 def build_palette() -> dict[str, Any]:
     tools = []
     for tool in ToolRegistry.list_all():
@@ -375,4 +392,5 @@ def build_palette() -> dict[str, Any]:
         "models": MODEL_OPTIONS,
         "connectors": CONNECTOR_CATALOG,
         "flows": FLOW_PATTERNS,
+        "agent_presets": _agent_presets(),
     }

@@ -99,12 +99,22 @@ export interface FlowAgentSpec {
   temperature?: number
 }
 
+export interface AgentPresetDef {
+  name: string
+  role: string
+  goal: string
+  backstory: string
+  temperature: number
+  tools: string[]
+}
+
 export interface Palette {
   node_types: NodeTypeDef[]
   tools: ToolDef[]
   models: ModelOption[]
   connectors: ConnectorDef[]
   flows?: FlowPatternDef[]
+  agent_presets?: AgentPresetDef[]
 }
 
 export type NodeRunStatus = 'idle' | 'running' | 'completed' | 'failed' | 'skipped'
