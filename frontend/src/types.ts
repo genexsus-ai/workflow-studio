@@ -171,6 +171,7 @@ export interface ConnectorDef {
   type: string
   label: string
   color: string
+  icon?: string
   credential_fields: { name: string; secret?: boolean; example?: string }[]
   actions: Record<string, ConnectorActionDef>
 }

@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import * as api from './api'
 import { AutomationPanel } from './components/AutomationPanel'
+import type { PickedNode } from './components/NodePicker'
 import { Canvas } from './components/Canvas'
 import { ConfigPanel } from './components/ConfigPanel'
 import { CredentialsPanel } from './components/CredentialsPanel'
@@ -124,62 +125,55 @@ export default function App() {
     setSelectedEdge(selection.edges[0] ?? null)
   }, [])
 
-  const onDropNode = useCallback(
-    (type: string, position: { x: number; y: number }) => {
-      const taken = new Set(nodes.map((n) => n.id))
-      const id = nextNodeId(type, taken)
-      const def = palette?.node_types.find((t) => t.type === type)
+  const buildNode = useCallback(
+    (picked: PickedNode, position: { x: number; y: number }, taken: Set<string>): StudioNode => {
+      const id = nextNodeId(picked.type, taken)
+      const def = palette?.node_types.find((t) => t.type === picked.type)
       const defaults: Record<string, unknown> = {}
       def?.config_fields.forEach((field) => {
         if (field.default !== undefined) defaults[field.name] = field.default
       })
-      const node: StudioNode = {
+      const base = picked.label ?? def?.label
+      return {
         id,
         type: 'studio',
         position,
         data: {
-          nodeType: type,
-          label: def?.label ? `${def.label} ${id.split('_').pop()}` : id,
-          config: defaults,
+          nodeType: picked.type,
+          label: base ? `${base} ${id.split('_').pop()}` : id,
+          config: { ...defaults, ...(picked.config ?? {}) },
           status: 'idle',
-          color: colorFor(type) ?? '#64748b',
+          color: colorFor(picked.type) ?? '#64748b',
         },
       }
+    },
+    [palette, colorFor],
+  )
+
+  const onDropNode = useCallback(
+    (picked: PickedNode, position: { x: number; y: number }) => {
+      const node = buildNode(picked, position, new Set(nodes.map((n) => n.id)))
       setNodes((current) => [...current, node])
       setDirty(true)
     },
-    [nodes, palette, colorFor],
+    [nodes, buildNode],
   )
 
   const onAddConnected = useCallback(
-    (sourceId: string, type: string) => {
+    (sourceId: string, picked: PickedNode) => {
       const source = nodes.find((node) => node.id === sourceId)
       if (!source) return
-      const taken = new Set(nodes.map((n) => n.id))
-      const id = nextNodeId(type, taken)
-      const def = palette?.node_types.find((t) => t.type === type)
-      const defaults: Record<string, unknown> = {}
-      def?.config_fields.forEach((field) => {
-        if (field.default !== undefined) defaults[field.name] = field.default
-      })
-      const node: StudioNode = {
-        id,
-        type: 'studio',
-        position: { x: source.position.x + 260, y: source.position.y },
-        data: {
-          nodeType: type,
-          label: def?.label ? `${def.label} ${id.split('_').pop()}` : id,
-          config: defaults,
-          status: 'idle',
-          color: colorFor(type) ?? '#64748b',
-        },
-      }
+      const node = buildNode(
+        picked,
+        { x: source.position.x + 260, y: source.position.y },
+        new Set(nodes.map((n) => n.id)),
+      )
       setNodes((current) => [...current, node])
       setEdges((current) =>
         addEdge(
           {
             source: sourceId,
-            target: id,
+            target: node.id,
             sourceHandle: null,
             targetHandle: null,
             data: { condition: null, parallel: false, attach: null },
@@ -189,45 +183,31 @@ export default function App() {
       )
       setDirty(true)
     },
-    [nodes, palette, colorFor],
+    [nodes, buildNode],
   )
 
   const onAddAttached = useCallback(
-    (agentId: string, port: 'model' | 'memory' | 'tools', type: string) => {
+    (agentId: string, port: 'model' | 'memory' | 'tools', picked: PickedNode) => {
       const agent = nodes.find((node) => node.id === agentId)
       if (!agent) return
-      const taken = new Set(nodes.map((n) => n.id))
-      const id = nextNodeId(type, taken)
-      const def = palette?.node_types.find((t) => t.type === type)
-      const defaults: Record<string, unknown> = {}
-      def?.config_fields.forEach((field) => {
-        if (field.default !== undefined) defaults[field.name] = field.default
-      })
       const portOffset = { model: -50, memory: 45, tools: 140 }[port]
       // Tools ports hold many attachments: fan additional ones out to the right.
       const siblings = edges.filter(
         (edge) => edge.target === agentId && edge.targetHandle === `attach_${port}`,
       ).length
-      const node: StudioNode = {
-        id,
-        type: 'studio',
-        position: {
+      const node = buildNode(
+        picked,
+        {
           x: agent.position.x + portOffset + siblings * 200,
           y: agent.position.y + 140 + siblings * 24,
         },
-        data: {
-          nodeType: type,
-          label: def?.label ? `${def.label} ${id.split('_').pop()}` : id,
-          config: defaults,
-          status: 'idle',
-          color: colorFor(type) ?? '#64748b',
-        },
-      }
+        new Set(nodes.map((n) => n.id)),
+      )
       setNodes((current) => [...current, node])
       setEdges((current) =>
         addEdge(
           {
-            source: id,
+            source: node.id,
             target: agentId,
             sourceHandle: 'attach',
             targetHandle: `attach_${port}`,
@@ -239,7 +219,7 @@ export default function App() {
       )
       setDirty(true)
     },
-    [nodes, edges, palette, colorFor],
+    [nodes, edges, buildNode],
   )
 
   const onNodeConfigChange = useCallback(
@@ -528,6 +508,7 @@ export default function App() {
             nodes={nodes}
             edges={edges}
             nodeDefs={palette?.node_types ?? []}
+            connectors={palette?.connectors ?? []}
             onAddConnected={onAddConnected}
             onAddAttached={onAddAttached}
             onNodesChange={onNodesChange}

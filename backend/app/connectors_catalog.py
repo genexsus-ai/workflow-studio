@@ -33,6 +33,7 @@ CONNECTOR_CATALOG: list[dict[str, Any]] = [
     {
         "type": "slack",
         "label": "Slack",
+        "icon": "💬",
         "color": "#611f69",
         "credential_fields": [{"name": "bot_token", "secret": True}],
         "actions": {
@@ -60,6 +61,7 @@ CONNECTOR_CATALOG: list[dict[str, Any]] = [
     {
         "type": "github",
         "label": "GitHub",
+        "icon": "🐙",
         "color": "#24292f",
         "credential_fields": [{"name": "token", "secret": True}],
         "actions": {
@@ -93,6 +95,7 @@ CONNECTOR_CATALOG: list[dict[str, Any]] = [
     {
         "type": "jira",
         "label": "Jira",
+        "icon": "📌",
         "color": "#0052cc",
         "credential_fields": [
             {"name": "base_url", "secret": False, "example": "https://you.atlassian.net"},
@@ -120,6 +123,7 @@ CONNECTOR_CATALOG: list[dict[str, Any]] = [
     {
         "type": "notion",
         "label": "Notion",
+        "icon": "📝",
         "color": "#1f2328",
         "credential_fields": [{"name": "token", "secret": True}],
         "actions": {
@@ -143,6 +147,7 @@ CONNECTOR_CATALOG: list[dict[str, Any]] = [
     {
         "type": "google_workspace",
         "label": "Google Workspace",
+        "icon": "📧",
         "color": "#0f9d58",
         "credential_fields": [{"name": "access_token", "secret": True}],
         "actions": {

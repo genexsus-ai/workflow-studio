@@ -1240,3 +1240,42 @@ button.danger {
   color: #2563eb;
   background: #eff6ff;
 }
+
+/* node picker: sections, app drill-in */
+.node-picker-sections {
+  overflow-y: auto;
+  padding-bottom: 12px;
+}
+
+.node-picker-section {
+  padding: 10px 16px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+}
+
+.node-picker-back {
+  margin: 12px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #334155;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.node-picker-back:hover {
+  background: #e2e8f0;
+}
+
+.node-picker-arrow {
+  margin-left: auto;
+  color: #94a3b8;
+  font-size: 13px;
+  align-self: center;
+}

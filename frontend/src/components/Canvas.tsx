@@ -15,9 +15,9 @@ import { useCallback, useRef, useState } from 'react'
 
 import { ConnectPickerContext, PORT_TYPES, type ConnectRequest } from '../lib/connectContext'
 import type { StudioNode } from '../lib/translate'
-import type { NodeTypeDef } from '../types'
+import type { ConnectorDef, NodeTypeDef } from '../types'
 import { FirstStepPicker } from './FirstStepPicker'
-import { NodePicker } from './NodePicker'
+import { NodePicker, type PickedNode } from './NodePicker'
 import { StudioNode as StudioNodeComponent } from './nodes/StudioNode'
 
 const nodeTypes: NodeTypes = { studio: StudioNodeComponent }
@@ -26,19 +26,21 @@ interface CanvasProps {
   nodes: StudioNode[]
   edges: Edge[]
   nodeDefs: NodeTypeDef[]
+  connectors: ConnectorDef[]
   onNodesChange: OnNodesChange<StudioNode>
   onEdgesChange: OnEdgesChange
   onConnect: OnConnect
   onSelectionChange: OnSelectionChangeFunc
-  onDropNode: (type: string, position: { x: number; y: number }) => void
-  onAddConnected: (sourceId: string, type: string) => void
-  onAddAttached: (agentId: string, port: 'model' | 'memory' | 'tools', type: string) => void
+  onDropNode: (picked: PickedNode, position: { x: number; y: number }) => void
+  onAddConnected: (sourceId: string, picked: PickedNode) => void
+  onAddAttached: (agentId: string, port: 'model' | 'memory' | 'tools', picked: PickedNode) => void
 }
 
 export function Canvas({
   nodes,
   edges,
   nodeDefs,
+  connectors,
   onNodesChange,
   onEdgesChange,
   onConnect,
@@ -62,13 +64,13 @@ export function Canvas({
       const type = event.dataTransfer.getData('application/genxai-node-type')
       if (!type) return
       const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
-      onDropNode(type, position)
+      onDropNode({ type }, position)
     },
     [screenToFlowPosition, onDropNode],
   )
 
   const addAtCenter = useCallback(
-    (type: string) => {
+    (picked: PickedNode) => {
       const rect = wrapperRef.current?.getBoundingClientRect()
       const position = rect
         ? screenToFlowPosition({
@@ -76,7 +78,7 @@ export function Canvas({
             y: rect.top + rect.height / 2,
           })
         : { x: 250, y: 200 }
-      onDropNode(type, position)
+      onDropNode(picked, position)
     },
     [screenToFlowPosition, onDropNode],
   )
@@ -101,7 +103,9 @@ export function Canvas({
         <Controls />
       </ReactFlow>
       </ConnectPickerContext.Provider>
-      {nodes.length === 0 && <FirstStepPicker nodeDefs={nodeDefs} onPick={addAtCenter} />}
+      {nodes.length === 0 && (
+        <FirstStepPicker nodeDefs={nodeDefs} connectors={connectors} onPick={addAtCenter} />
+      )}
       {connectFrom && (
         <NodePicker
           nodeDefs={
@@ -109,12 +113,13 @@ export function Canvas({
               ? nodeDefs.filter((def) => PORT_TYPES[connectFrom.port!].includes(def.type))
               : nodeDefs.filter((def) => !['trigger', 'input'].includes(def.type))
           }
+          connectors={connectFrom.port ? [] : connectors}
           onClose={() => setConnectFrom(null)}
-          onPick={(type) => {
+          onPick={(picked) => {
             if (connectFrom.port) {
-              onAddAttached(connectFrom.nodeId, connectFrom.port, type)
+              onAddAttached(connectFrom.nodeId, connectFrom.port, picked)
             } else {
-              onAddConnected(connectFrom.nodeId, type)
+              onAddConnected(connectFrom.nodeId, picked)
             }
             setConnectFrom(null)
           }}
