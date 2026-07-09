@@ -50,6 +50,18 @@ FLOW_PATTERNS: list[dict[str, Any]] = [
         "params": [],
     },
     {
+        "id": "delegator_worker",
+        "label": "Delegator / workers",
+        "description": (
+            "First agent routes typed work packets to the other agents; "
+            "packets run in dependency waves and dependent packets receive "
+            "upstream results."
+        ),
+        "order_hint": "Agent 1 = delegator, the rest = workers (addressed by role).",
+        "min_agents": 2,
+        "params": [],
+    },
+    {
         "id": "coordinator_worker",
         "label": "Coordinator / workers",
         "description": "First agent plans the work; the rest execute it in parallel.",
