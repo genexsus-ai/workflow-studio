@@ -83,34 +83,54 @@ function toolEntry(tool: ToolDef, toolColor: string): PickerEntry {
   }
 }
 
-// Placeholder roles per pattern so a picked flow arrives with its
-// structure visible — the user fills in roles/goals in the panel.
-const FLOW_ROLE_SCAFFOLDS: Record<string, string[]> = {
-  critic_review: ['Writer', 'Critic'],
-  coordinator_worker: ['Coordinator', 'Worker'],
-  delegator_worker: ['Delegator', 'Worker'],
-  map_reduce: ['Worker', 'Combiner'],
-  ensemble_voting: ['Voter 1', 'Voter 2'],
-  auction: ['Bidder 1', 'Bidder 2'],
-  p2p: ['Peer 1', 'Peer 2'],
-  round_robin: ['Agent 1', 'Agent 2'],
-  parallel: ['Agent 1', 'Agent 2'],
+// Library agents suited to each pattern's slots (in the pattern's agent
+// order). Picking a pattern pre-fills these as full agents; the panel's
+// agent editor is where users swap or rewrite them. Names not found in
+// the agent library fall back to blank placeholder roles.
+const FLOW_AGENT_SCAFFOLDS: Record<string, string[]> = {
+  critic_review: ['writer', 'editor'],
+  coordinator_worker: ['task_planner', 'researcher'],
+  delegator_worker: ['task_planner', 'researcher'],
+  map_reduce: ['researcher', 'summarizer'],
+  ensemble_voting: ['classifier', 'classifier'],
+  auction: ['researcher', 'writer'],
+  p2p: ['researcher', 'editor'],
+  round_robin: ['researcher', 'writer'],
+  parallel: ['researcher', 'data_analyst'],
 }
 
-function flowPatternEntry(pattern: FlowPatternDef, color: string): PickerEntry {
-  const roles = [...(FLOW_ROLE_SCAFFOLDS[pattern.id] ?? [])]
-  while (roles.length < pattern.min_agents) roles.push(`Agent ${roles.length + 1}`)
+function flowPatternEntry(
+  pattern: FlowPatternDef,
+  color: string,
+  agentPresets: AgentPresetDef[],
+): PickerEntry {
+  const presetByName = new Map(agentPresets.map((preset) => [preset.name, preset]))
+  const slotNames = [...(FLOW_AGENT_SCAFFOLDS[pattern.id] ?? [])]
+  while (slotNames.length < pattern.min_agents) slotNames.push('')
+
+  const agents = slotNames.map((name, index) => {
+    const preset = presetByName.get(name)
+    if (!preset) return { role: `Agent ${index + 1}`, goal: '' }
+    return {
+      role: preset.role,
+      goal: preset.goal,
+      backstory: preset.backstory,
+      temperature: preset.temperature,
+    }
+  })
+  const slotSummary = agents.map((agent) => agent.role).join(' + ')
+
   return {
     key: `flow:${pattern.id}`,
     icon: '👥',
     iconBg: `${color}1c`,
     label: pattern.label,
-    description: `${pattern.description} ${pattern.order_hint}`,
+    description: `${pattern.description} Starts with: ${slotSummary}.`,
     picked: {
       type: 'flow',
       config: {
         flow_type: pattern.id,
-        agents: roles.map((role) => ({ role, goal: '' })),
+        agents,
         params: Object.fromEntries(
           pattern.params
             .filter((param) => param.default !== undefined)
@@ -262,7 +282,7 @@ export function NodePicker({
       return [
         [
           'Collaboration patterns',
-          flows.map((pattern) => flowPatternEntry(pattern, flowDef?.color ?? '#ec4899')),
+          flows.map((pattern) => flowPatternEntry(pattern, flowDef?.color ?? '#ec4899', agentPresets)),
         ],
       ]
     }
@@ -303,7 +323,7 @@ export function NodePicker({
         .filter((pattern) =>
           `${pattern.id} ${pattern.label} ${pattern.description}`.toLowerCase().includes(needle),
         )
-        .map((pattern) => flowPatternEntry(pattern, flowDef?.color ?? '#ec4899'))
+        .map((pattern) => flowPatternEntry(pattern, flowDef?.color ?? '#ec4899', agentPresets))
       const matchingActions = connectors.flatMap((app) => {
         const appMatch = `${app.label} ${app.type}`.toLowerCase().includes(needle)
         return Object.keys(app.actions)
@@ -385,7 +405,7 @@ export function NodePicker({
       byKey.set(`tool:${tool.name}`, toolEntry(tool, toolDef?.color ?? '#f59e0b'))
     }
     for (const pattern of flows) {
-      byKey.set(`flow:${pattern.id}`, flowPatternEntry(pattern, flowDef?.color ?? '#ec4899'))
+      byKey.set(`flow:${pattern.id}`, flowPatternEntry(pattern, flowDef?.color ?? '#ec4899', agentPresets))
     }
     const recents = loadRecents()
       .map((key) => byKey.get(key))
