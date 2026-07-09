@@ -256,24 +256,40 @@ export function ConfigPanel({
       case 'tool_multiselect': {
         const selected = Array.isArray(value) ? (value as string[]) : []
         return (
-          <div className="tool-multiselect">
-            {tools.map((tool) => (
-              <label key={tool.name} title={tool.description}>
-                <input
-                  type="checkbox"
-                  checked={selected.includes(tool.name)}
-                  onChange={(event) =>
-                    setValue(
-                      field.name,
-                      event.target.checked
-                        ? [...selected, tool.name]
-                        : selected.filter((name) => name !== tool.name),
-                    )
-                  }
-                />
-                {tool.name}
-              </label>
-            ))}
+          <div className="tool-chips">
+            {selected.length > 0 ? (
+              <div className="chips">
+                {selected.map((name) => (
+                  <span className="chip" key={name}>
+                    {name}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${name}`}
+                      onClick={() =>
+                        setValue(
+                          field.name,
+                          selected.filter((tool) => tool !== name),
+                        )
+                      }
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="chips-empty">
+                No tools yet — add one below, or attach tool nodes via the Tools port
+              </div>
+            )}
+            <Combobox
+              value=""
+              placeholder="Add a tool…"
+              options={tools
+                .filter((tool) => !selected.includes(tool.name))
+                .map((tool) => ({ value: tool.name, description: tool.description }))}
+              onChange={(name) => setValue(field.name, [...selected, name])}
+            />
           </div>
         )
       }
