@@ -145,7 +145,7 @@ export function StudioNode({ id, data, selected }: NodeProps<StudioNodeType>) {
               <span className="studio-port-label" style={{ left: port.left }}>
                 {port.label}
               </span>
-              {!attachedPorts.includes(port.id) && (
+              {(port.id === 'attach_tools' || !attachedPorts.includes(port.id)) && (
                 <button
                   type="button"
                   className="studio-port-add nodrag"

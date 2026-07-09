@@ -204,10 +204,17 @@ export default function App() {
         if (field.default !== undefined) defaults[field.name] = field.default
       })
       const portOffset = { model: -50, memory: 45, tools: 140 }[port]
+      // Tools ports hold many attachments: fan additional ones out to the right.
+      const siblings = edges.filter(
+        (edge) => edge.target === agentId && edge.targetHandle === `attach_${port}`,
+      ).length
       const node: StudioNode = {
         id,
         type: 'studio',
-        position: { x: agent.position.x + portOffset, y: agent.position.y + 140 },
+        position: {
+          x: agent.position.x + portOffset + siblings * 200,
+          y: agent.position.y + 140 + siblings * 24,
+        },
         data: {
           nodeType: type,
           label: def?.label ? `${def.label} ${id.split('_').pop()}` : id,
@@ -232,7 +239,7 @@ export default function App() {
       )
       setDirty(true)
     },
-    [nodes, palette, colorFor],
+    [nodes, edges, palette, colorFor],
   )
 
   const onNodeConfigChange = useCallback(
