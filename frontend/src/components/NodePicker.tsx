@@ -18,7 +18,7 @@ interface PickerEntry {
   iconBg: string
   label: string
   description: string
-  drillInto?: ConnectorDef
+  drillInto?: ConnectorDef | 'apps'
   picked?: PickedNode
 }
 
@@ -74,7 +74,7 @@ function actionEntry(app: ConnectorDef, action: string, withAppName: boolean): P
  * nodes, and connector apps with per-action search and drill-in. */
 export function NodePicker({ nodeDefs, connectors = [], onPick, onClose }: NodePickerProps) {
   const [query, setQuery] = useState('')
-  const [openApp, setOpenApp] = useState<ConnectorDef | null>(null)
+  const [view, setView] = useState<'root' | 'apps' | ConnectorDef>('root')
 
   const pick = (picked: PickedNode, key: string) => {
     saveRecent(key)
@@ -83,16 +83,16 @@ export function NodePicker({ nodeDefs, connectors = [], onPick, onClose }: NodeP
 
   const sections = useMemo((): [string, PickerEntry[]][] => {
     const hasApps = connectors.length > 0
-    // The generic connector node is superseded by app entries when present.
-    const coreDefs = nodeDefs.filter(
-      (def) => !TRIGGER_TYPES.has(def.type) && !(hasApps && def.type === 'connector'),
-    )
+    // With apps available, the Connector core entry becomes a drill-in to
+    // the app list (Connector -> app -> action) to keep the root compact.
+    const coreDefs = nodeDefs.filter((def) => !TRIGGER_TYPES.has(def.type))
     const triggerDefs = nodeDefs.filter((def) => TRIGGER_TYPES.has(def.type))
 
-    if (openApp) {
-      return [
-        [openApp.label, Object.keys(openApp.actions).map((a) => actionEntry(openApp, a, false))],
-      ]
+    if (view === 'apps') {
+      return [['Apps', connectors.map(appEntry)]]
+    }
+    if (view !== 'root') {
+      return [[view.label, Object.keys(view.actions).map((a) => actionEntry(view, a, false))]]
     }
 
     const needle = query.trim().toLowerCase()
@@ -126,19 +126,30 @@ export function NodePicker({ nodeDefs, connectors = [], onPick, onClose }: NodeP
       .filter((entry): entry is PickerEntry => Boolean(entry))
       .slice(0, 4)
 
+    const coreEntries = coreDefs.map((def) =>
+      hasApps && def.type === 'connector'
+        ? {
+            ...defEntry(def),
+            key: 'drill:apps',
+            description: `${connectors.length} app${connectors.length === 1 ? '' : 's'}`,
+            picked: undefined,
+            drillInto: 'apps' as const,
+          }
+        : defEntry(def),
+    )
+
     const result: [string, PickerEntry[]][] = []
     if (recents.length > 0) result.push(['Recently used', recents])
     if (triggerDefs.length > 0) result.push(['Triggers', triggerDefs.map(defEntry)])
-    result.push(['Core', coreDefs.map(defEntry)])
-    if (hasApps) result.push(['Apps', connectors.map(appEntry)])
+    result.push(['Core', coreEntries])
     return result
-  }, [nodeDefs, connectors, query, openApp])
+  }, [nodeDefs, connectors, query, view])
 
   const flatEntries = sections.flatMap(([, entries]) => entries)
 
   const activate = (entry: PickerEntry) => {
     if (entry.drillInto) {
-      setOpenApp(entry.drillInto)
+      setView(entry.drillInto)
       setQuery('')
     } else if (entry.picked) {
       pick(entry.picked, entry.key)
@@ -149,9 +160,13 @@ export function NodePicker({ nodeDefs, connectors = [], onPick, onClose }: NodeP
     <>
       <div className="node-picker-backdrop" onClick={onClose} />
       <div className="node-picker">
-        {openApp ? (
-          <button type="button" className="node-picker-back" onClick={() => setOpenApp(null)}>
-            ← All nodes
+        {view !== 'root' ? (
+          <button
+            type="button"
+            className="node-picker-back"
+            onClick={() => setView(view === 'apps' ? 'root' : 'apps')}
+          >
+            {view === 'apps' ? '← All nodes' : '← Apps'}
           </button>
         ) : (
           <input
