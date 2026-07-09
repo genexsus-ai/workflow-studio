@@ -150,47 +150,103 @@ export default function App() {
     [palette, colorFor],
   )
 
+  // Flow picks carrying a team scaffold materialize as a flow node plus
+  // visible agent nodes attached to its Agents port (x order = agent order).
+  const expandFlowTeam = useCallback(
+    (
+      picked: PickedNode,
+      position: { x: number; y: number },
+      taken: Set<string>,
+    ): { nodes: StudioNode[]; edges: Edge[] } => {
+      const teamSpecs =
+        picked.type === 'flow' && Array.isArray(picked.config?.agents)
+          ? (picked.config.agents as {
+              role: string
+              goal: string
+              backstory?: string
+              temperature?: number
+            }[])
+          : []
+      if (teamSpecs.length === 0) {
+        return { nodes: [buildNode(picked, position, taken)], edges: [] }
+      }
+      const flowNode = buildNode(
+        { ...picked, config: { ...picked.config, agents: [] } },
+        position,
+        taken,
+      )
+      const ids = new Set([...taken, flowNode.id])
+      const outNodes: StudioNode[] = [flowNode]
+      const outEdges: Edge[] = []
+      teamSpecs.forEach((spec, index) => {
+        const config: Record<string, unknown> = { role: spec.role, goal: spec.goal }
+        if (spec.backstory) config.backstory = spec.backstory
+        if (spec.temperature !== undefined) config.temperature = spec.temperature
+        const agentNode = buildNode(
+          { type: 'agent', config, label: spec.role },
+          { x: position.x - 60 + index * 220, y: position.y + 150 },
+          ids,
+        )
+        ids.add(agentNode.id)
+        outNodes.push(agentNode)
+        outEdges.push({
+          id: `attach_${agentNode.id}_${flowNode.id}`,
+          source: agentNode.id,
+          target: flowNode.id,
+          sourceHandle: 'attach',
+          targetHandle: 'attach_agents',
+          style: ATTACH_EDGE_STYLE,
+          data: { condition: null, parallel: false, attach: 'agents' },
+        } as Edge)
+      })
+      return { nodes: outNodes, edges: outEdges }
+    },
+    [buildNode],
+  )
+
   const onDropNode = useCallback(
     (picked: PickedNode, position: { x: number; y: number }) => {
-      const node = buildNode(picked, position, new Set(nodes.map((n) => n.id)))
-      setNodes((current) => [...current, node])
+      const added = expandFlowTeam(picked, position, new Set(nodes.map((n) => n.id)))
+      setNodes((current) => [...current, ...added.nodes])
+      if (added.edges.length > 0) setEdges((current) => [...current, ...added.edges])
       setDirty(true)
     },
-    [nodes, buildNode],
+    [nodes, expandFlowTeam],
   )
 
   const onAddConnected = useCallback(
     (sourceId: string, picked: PickedNode) => {
       const source = nodes.find((node) => node.id === sourceId)
       if (!source) return
-      const node = buildNode(
+      const added = expandFlowTeam(
         picked,
         { x: source.position.x + 260, y: source.position.y },
         new Set(nodes.map((n) => n.id)),
       )
-      setNodes((current) => [...current, node])
-      setEdges((current) =>
-        addEdge(
+      setNodes((current) => [...current, ...added.nodes])
+      setEdges((current) => [
+        ...addEdge(
           {
             source: sourceId,
-            target: node.id,
+            target: added.nodes[0].id,
             sourceHandle: null,
             targetHandle: null,
             data: { condition: null, parallel: false, attach: null },
           },
           current,
         ),
-      )
+        ...added.edges,
+      ])
       setDirty(true)
     },
-    [nodes, buildNode],
+    [nodes, expandFlowTeam],
   )
 
   const onAddAttached = useCallback(
-    (agentId: string, port: 'model' | 'memory' | 'tools', picked: PickedNode) => {
+    (agentId: string, port: 'model' | 'memory' | 'tools' | 'agents', picked: PickedNode) => {
       const agent = nodes.find((node) => node.id === agentId)
       if (!agent) return
-      const portOffset = { model: -50, memory: 45, tools: 140 }[port]
+      const portOffset = { model: -50, memory: 45, tools: 140, agents: 45 }[port]
       // Tools ports hold many attachments: fan additional ones out to the right.
       const siblings = edges.filter(
         (edge) => edge.target === agentId && edge.targetHandle === `attach_${port}`,

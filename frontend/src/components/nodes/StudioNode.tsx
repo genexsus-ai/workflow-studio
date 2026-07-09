@@ -14,8 +14,9 @@ const STATUS_COLORS: Record<string, string> = {
 
 // Capability nodes hang off an agent's bottom ports instead of joining the flow
 const CAPABILITY_TYPES = new Set(['model', 'memory'])
-// Node types that can also be attached to an agent's Tools port
-const ATTACHABLE_TOOL_TYPES = new Set(['tool', 'mcp'])
+// Node types that can attach to another node's port (tool/mcp -> agent
+// Tools port; agent -> flow Agents port)
+const ATTACHABLE_TOOL_TYPES = new Set(['tool', 'mcp', 'agent'])
 // Flow sources: nothing can connect INTO these (n8n-style single output)
 const NO_TARGET_TYPES = new Set(['input', 'trigger'])
 
@@ -37,6 +38,11 @@ export function StudioNode({ id, data, selected }: NodeProps<StudioNodeType>) {
       .map((edge) => edge.targetHandle)
       .join(','),
   )
+  const attachedTeamCount = useStore(
+    (state) =>
+      state.edges.filter((edge) => edge.target === id && edge.targetHandle === 'attach_agents')
+        .length,
+  )
   const ring = STATUS_COLORS[data.status] ?? 'transparent'
   const isCapability = CAPABILITY_TYPES.has(data.nodeType)
   const isTrigger = data.nodeType === 'trigger'
@@ -56,7 +62,7 @@ export function StudioNode({ id, data, selected }: NodeProps<StudioNodeType>) {
               : data.nodeType === 'memory'
                 ? (data.config.persistent === false ? 'this run only' : 'persistent')
                 : data.nodeType === 'flow'
-                  ? `${String(data.config.flow_type ?? 'pattern')} · ${Array.isArray(data.config.agents) ? data.config.agents.length : 0} agents`
+                  ? `${String(data.config.flow_type ?? 'pattern')} · ${(Array.isArray(data.config.agents) ? data.config.agents.length : 0) + attachedTeamCount} agents`
                   : undefined
 
   const classes = [
@@ -130,6 +136,33 @@ export function StudioNode({ id, data, selected }: NodeProps<StudioNodeType>) {
           className="studio-attach-handle"
           title="Attach to an agent port"
         />
+      )}
+      {data.nodeType === 'flow' && (
+        <div className="studio-node-ports">
+          <Handle
+            type="target"
+            id="attach_agents"
+            position={Position.Bottom}
+            className="studio-attach-handle"
+            style={{ left: '50%' }}
+          />
+          <span className="studio-port-label" style={{ left: '50%' }}>
+            Agents
+          </span>
+          <button
+            type="button"
+            className="studio-port-add nodrag"
+            style={{ left: '50%' }}
+            title="Add team agent"
+            aria-label="Add team agent"
+            onClick={(event) => {
+              event.stopPropagation()
+              openConnectPicker({ nodeId: id, port: 'agents' })
+            }}
+          >
+            +
+          </button>
+        </div>
       )}
       {data.nodeType === 'agent' && (
         <div className="studio-node-ports">

@@ -37,7 +37,7 @@ interface CanvasProps {
   onSelectionChange: OnSelectionChangeFunc
   onDropNode: (picked: PickedNode, position: { x: number; y: number }) => void
   onAddConnected: (sourceId: string, picked: PickedNode) => void
-  onAddAttached: (agentId: string, port: 'model' | 'memory' | 'tools', picked: PickedNode) => void
+  onAddAttached: (agentId: string, port: 'model' | 'memory' | 'tools' | 'agents', picked: PickedNode) => void
 }
 
 export function Canvas({
@@ -130,7 +130,7 @@ export function Canvas({
               : nodeDefs.filter((def) => !['trigger', 'input'].includes(def.type))
           }
           connectors={connectFrom.port ? [] : connectors}
-          agentPresets={connectFrom.port ? [] : agentPresets}
+          agentPresets={connectFrom.port && connectFrom.port !== 'agents' ? [] : agentPresets}
           tools={connectFrom.port && connectFrom.port !== 'tools' ? [] : tools}
           mcpServers={connectFrom.port && connectFrom.port !== 'tools' ? [] : mcpServers}
           flows={connectFrom.port ? [] : flows}

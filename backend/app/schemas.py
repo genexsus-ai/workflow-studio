@@ -22,7 +22,7 @@ NODE_TYPES = (
 
 # Agent capability ports (n8n-style sub-nodes): an edge with attach set hangs
 # a capability node off an agent instead of being a flow step.
-ATTACH_KINDS = ("model", "memory", "tools")
+ATTACH_KINDS = ("model", "memory", "tools", "agents")
 
 
 class Position(BaseModel):

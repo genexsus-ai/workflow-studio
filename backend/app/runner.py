@@ -93,6 +93,44 @@ def _apply_agent_overrides(
             config["memory"] = {"persistence_path": str(base), "memory_id": identity}
 
 
+def _flow_team_attachments(doc: WorkflowDoc) -> tuple[dict[str, list[dict[str, Any]]], set[str]]:
+    """Fold agent nodes attached to a flow node's Agents port into its team.
+
+    Attached agents join the team AFTER any inline config agents, ordered by
+    their canvas x position (left to right = pattern agent order).
+
+    Returns (flow_id -> agent spec dicts, ids of attached agent nodes).
+    """
+    node_by_id = {node.id: node for node in doc.nodes}
+    teams: dict[str, list[tuple[float, float, dict[str, Any]]]] = {}
+    attached_ids: set[str] = set()
+
+    for edge in doc.edges:
+        if edge.attach != "agents":
+            continue
+        source = node_by_id.get(edge.source)
+        target = node_by_id.get(edge.target)
+        if source is None or target is None or source.type != "agent" or target.type != "flow":
+            continue  # validate() reports these
+        attached_ids.add(source.id)
+        spec: dict[str, Any] = {
+            "role": source.config.get("role") or source.label or source.id,
+            "goal": source.config.get("goal", ""),
+        }
+        for key in ("backstory", "llm_model", "temperature", "tools"):
+            if source.config.get(key) not in (None, "", []):
+                spec[key] = source.config[key]
+        teams.setdefault(target.id, []).append(
+            (source.position.x, source.position.y, spec)
+        )
+
+    ordered = {
+        flow_id: [spec for _x, _y, spec in sorted(members, key=lambda m: (m[0], m[1]))]
+        for flow_id, members in teams.items()
+    }
+    return ordered, attached_ids
+
+
 def translate(doc: WorkflowDoc) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Convert a WorkflowDoc into the node/edge dicts WorkflowExecutor accepts.
 
@@ -100,6 +138,8 @@ def translate(doc: WorkflowDoc) -> tuple[list[dict[str, Any]], list[dict[str, An
     into the target agent's config, and their source nodes leave the flow.
     """
     agent_overrides, attached_ids = _agent_attachments(doc)
+    flow_teams, team_agent_ids = _flow_team_attachments(doc)
+    attached_ids = attached_ids | team_agent_ids
     # Trigger nodes declare automation (schedule/webhook); they are not
     # execution steps, so they and their edges never reach the executor.
     trigger_ids = {node.id for node in doc.nodes if node.type == "trigger"}
@@ -147,6 +187,11 @@ def translate(doc: WorkflowDoc) -> tuple[list[dict[str, Any]], list[dict[str, An
                     "config": {"workflow_id": node.config.get("workflow_id")},
                 }
             )
+        elif node.type == "flow":
+            config = dict(node.config)
+            if node.id in flow_teams:
+                config["agents"] = list(config.get("agents") or []) + flow_teams[node.id]
+            nodes.append({"id": node.id, "type": "flow", "config": config})
         else:
             nodes.append(
                 {"id": node.id, "type": node.type, "config": dict(node.config)}
@@ -278,11 +323,16 @@ def validate(doc: WorkflowDoc) -> ValidationResult:
                     )
                 )
             agents = node.config.get("agents") or []
-            if not isinstance(agents, list) or not agents:
+            attached_team = sum(
+                1
+                for edge in doc.edges
+                if edge.attach == "agents" and edge.target == node.id
+            )
+            if (not isinstance(agents, list) or not agents) and attached_team == 0:
                 issues.append(
                     ValidationIssue(
                         level="error",
-                        message="Flow node needs at least one agent",
+                        message="Flow node needs at least one agent (inline or attached)",
                         node_id=node.id,
                     )
                 )
@@ -335,17 +385,22 @@ def validate(doc: WorkflowDoc) -> ValidationResult:
                     )
                 )
                 continue
-            if node_type.get(edge.target) != "agent":
+            required_target = "flow" if edge.attach == "agents" else "agent"
+            if node_type.get(edge.target) != required_target:
                 issues.append(
                     ValidationIssue(
                         level="error",
-                        message=f"Attachment edge must target an agent node, not '{edge.target}'",
+                        message=(
+                            f"'{edge.attach}' attachment edge must target "
+                            f"a {required_target} node, not '{edge.target}'"
+                        ),
                     )
                 )
             expected = {
                 "model": ("model",),
                 "memory": ("memory",),
                 "tools": ("tool", "mcp"),
+                "agents": ("agent",),
             }[edge.attach]
             if node_type.get(edge.source) not in expected:
                 issues.append(
@@ -396,7 +451,7 @@ def validate(doc: WorkflowDoc) -> ValidationResult:
                 issues.append(
                     ValidationIssue(
                         level="error",
-                        message=f"Node '{endpoint}' is attached to an agent and cannot also be a flow step",
+                        message=f"Node '{endpoint}' is attached to another node's port and cannot also be a flow step",
                         node_id=endpoint,
                     )
                 )

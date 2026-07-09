@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 
-export type AttachPort = 'model' | 'memory' | 'tools'
+export type AttachPort = 'model' | 'memory' | 'tools' | 'agents'
 
 /** A node's request to open the connect picker: from its output port
  * (no port) or from one of an agent's attachment ports. */
@@ -20,4 +20,5 @@ export const PORT_TYPES: Record<AttachPort, string[]> = {
   model: ['model'],
   memory: ['memory'],
   tools: ['tool', 'mcp'],
+  agents: ['agent'],
 }
