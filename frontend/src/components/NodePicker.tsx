@@ -93,7 +93,7 @@ const FLOW_AGENT_SCAFFOLDS: Record<string, string[]> = {
   coordinator_worker: ['task_planner', 'researcher', 'writer'],
   delegator_worker: ['delegator', 'researcher', 'writer'],
   map_reduce: ['researcher', 'data_analyst', 'summarizer'],
-  ensemble_voting: ['classifier', 'classifier'],
+  ensemble_voting: ['classifier', 'classifier', 'classifier'],
   auction: ['researcher', 'writer'],
   p2p: ['researcher', 'editor'],
   round_robin: ['researcher', 'writer'],
