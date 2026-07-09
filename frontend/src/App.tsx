@@ -436,6 +436,7 @@ export default function App() {
           <Canvas
             nodes={nodes}
             edges={edges}
+            nodeDefs={palette?.node_types ?? []}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}

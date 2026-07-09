@@ -11,9 +11,11 @@ import {
   type OnNodesChange,
   type OnSelectionChangeFunc,
 } from '@xyflow/react'
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 
 import type { StudioNode } from '../lib/translate'
+import type { NodeTypeDef } from '../types'
+import { FirstStepPicker } from './FirstStepPicker'
 import { StudioNode as StudioNodeComponent } from './nodes/StudioNode'
 
 const nodeTypes: NodeTypes = { studio: StudioNodeComponent }
@@ -21,6 +23,7 @@ const nodeTypes: NodeTypes = { studio: StudioNodeComponent }
 interface CanvasProps {
   nodes: StudioNode[]
   edges: Edge[]
+  nodeDefs: NodeTypeDef[]
   onNodesChange: OnNodesChange<StudioNode>
   onEdgesChange: OnEdgesChange
   onConnect: OnConnect
@@ -31,6 +34,7 @@ interface CanvasProps {
 export function Canvas({
   nodes,
   edges,
+  nodeDefs,
   onNodesChange,
   onEdgesChange,
   onConnect,
@@ -38,6 +42,7 @@ export function Canvas({
   onDropNode,
 }: CanvasProps) {
   const { screenToFlowPosition } = useReactFlow()
+  const wrapperRef = useRef<HTMLDivElement>(null)
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault()
@@ -55,8 +60,22 @@ export function Canvas({
     [screenToFlowPosition, onDropNode],
   )
 
+  const addAtCenter = useCallback(
+    (type: string) => {
+      const rect = wrapperRef.current?.getBoundingClientRect()
+      const position = rect
+        ? screenToFlowPosition({
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2,
+          })
+        : { x: 250, y: 200 }
+      onDropNode(type, position)
+    },
+    [screenToFlowPosition, onDropNode],
+  )
+
   return (
-    <div className="canvas" onDragOver={onDragOver} onDrop={onDrop}>
+    <div className="canvas" ref={wrapperRef} onDragOver={onDragOver} onDrop={onDrop}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -73,6 +92,7 @@ export function Canvas({
         <MiniMap pannable zoomable />
         <Controls />
       </ReactFlow>
+      {nodes.length === 0 && <FirstStepPicker nodeDefs={nodeDefs} onPick={addAtCenter} />}
     </div>
   )
 }

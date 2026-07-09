@@ -1031,3 +1031,125 @@ button.danger {
   font: inherit;
   font-size: 13px;
 }
+
+/* ------------------------------------------------- empty-canvas first step */
+
+.first-step-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.first-step-box {
+  width: 96px;
+  height: 96px;
+  border: 2px dashed #94a3b8;
+  border-radius: 14px;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.first-step-box:hover {
+  border-color: #f87171;
+  background: rgba(248, 113, 113, 0.06);
+}
+
+.first-step-plus {
+  font-size: 34px;
+  font-weight: 300;
+  color: #f87171;
+  line-height: 1;
+}
+
+.first-step-hint {
+  font-size: 14px;
+  color: #64748b;
+}
+
+.node-picker-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+}
+
+.node-picker {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 320px;
+  background: white;
+  border-left: 1px solid #e2e8f0;
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  z-index: 6;
+}
+
+.node-picker input {
+  margin: 12px;
+  padding: 9px 12px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.node-picker input:focus {
+  outline: none;
+  border-color: #6366f1;
+}
+
+.node-picker ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 6px 12px;
+  overflow-y: auto;
+}
+
+.node-picker li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.node-picker li:hover {
+  background: #f1f5f9;
+}
+
+.node-picker-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.node-picker-description {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.node-picker-empty {
+  color: #94a3b8;
+  font-size: 13px;
+  cursor: default;
+}
+
+.node-picker-empty:hover {
+  background: transparent;
+}
