@@ -1279,3 +1279,64 @@ button.danger {
   font-size: 13px;
   align-self: center;
 }
+
+/* searchable combobox (config panel) */
+.combobox {
+  position: relative;
+}
+
+.combobox input {
+  width: 100%;
+}
+
+.combobox-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  z-index: 20;
+}
+
+.combobox-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.combobox-list li:hover,
+.combobox-list li.active {
+  background: #f1f5f9;
+}
+
+.combobox-label {
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.combobox-description {
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.combobox-none,
+.combobox-empty {
+  padding: 7px 9px;
+  font-size: 12px;
+  color: #94a3b8;
+  cursor: default;
+}

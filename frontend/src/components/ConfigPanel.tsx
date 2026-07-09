@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react'
 
 import { listMcpServerTools } from '../api'
 
+import { Combobox } from './Combobox'
+
 import type { StudioNode } from '../lib/translate'
 import type { ConfigField, ConnectorDef, CredentialSummary, FlowAgentSpec, FlowPatternDef, McpServerSummary, McpToolInfo, ModelOption, NodeResult, NodeTypeDef, ToolDef, WorkflowSummary } from '../types'
 
@@ -161,36 +163,37 @@ export function ConfigPanel({
         )
       case 'connector_select':
         return (
-          <select
+          <Combobox
             value={String(value)}
-            onChange={(event) => {
+            placeholder="— choose integration —"
+            options={connectors.map((c) => ({
+              value: c.type,
+              label: c.label,
+              description: `${Object.keys(c.actions).length} actions`,
+            }))}
+            onChange={(next) =>
               onNodeConfigChange(node.id, {
                 ...config,
-                connector: event.target.value,
+                connector: next,
                 action: '',
                 credential: '',
               })
-            }}
-          >
-            <option value="">— choose integration —</option>
-            {connectors.map((c) => (
-              <option key={c.type} value={c.type}>
-                {c.label}
-              </option>
-            ))}
-          </select>
+            }
+          />
         )
       case 'action_select': {
         const connectorDef = connectors.find((c) => c.type === config.connector)
         return (
-          <select value={String(value)} onChange={(event) => setValue(field.name, event.target.value)}>
-            <option value="">— choose action —</option>
-            {Object.entries(connectorDef?.actions ?? {}).map(([actionName, def]) => (
-              <option key={actionName} value={actionName} title={def.description}>
-                {actionName}
-              </option>
-            ))}
-          </select>
+          <Combobox
+            value={String(value)}
+            placeholder="— choose action —"
+            emptyText="Choose an integration first"
+            options={Object.entries(connectorDef?.actions ?? {}).map(([actionName, def]) => ({
+              value: actionName,
+              description: def.description,
+            }))}
+            onChange={(next) => setValue(field.name, next)}
+          />
         )
       }
       case 'credential_select': {
@@ -240,14 +243,15 @@ export function ConfigPanel({
         )
       case 'tool_select':
         return (
-          <select value={String(value)} onChange={(event) => setValue(field.name, event.target.value)}>
-            <option value="">— choose a tool —</option>
-            {tools.map((tool) => (
-              <option key={tool.name} value={tool.name}>
-                {tool.name}
-              </option>
-            ))}
-          </select>
+          <Combobox
+            value={String(value)}
+            placeholder="— choose a tool —"
+            options={tools.map((tool) => ({
+              value: tool.name,
+              description: tool.description,
+            }))}
+            onChange={(next) => setValue(field.name, next)}
+          />
         )
       case 'tool_multiselect': {
         const selected = Array.isArray(value) ? (value as string[]) : []
