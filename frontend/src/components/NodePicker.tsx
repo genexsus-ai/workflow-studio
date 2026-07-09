@@ -161,23 +161,7 @@ export function NodePicker({
       return [['Results', [...matchingDefs, ...matchingPresets, ...matchingActions]]]
     }
 
-    const byKey = new Map<string, PickerEntry>()
-    for (const def of [...triggerDefs, ...coreDefs]) byKey.set(`type:${def.type}`, defEntry(def))
-    for (const app of connectors) {
-      byKey.set(`app:${app.type}`, appEntry(app))
-      for (const action of Object.keys(app.actions)) {
-        byKey.set(`action:${app.type}:${action}`, actionEntry(app, action, true))
-      }
-    }
-    for (const preset of agentPresets) {
-      byKey.set(`preset:${preset.name}`, presetEntry(preset, agentDef?.color ?? '#8b5cf6'))
-    }
-    const recents = loadRecents()
-      .map((key) => byKey.get(key))
-      .filter((entry): entry is PickerEntry => Boolean(entry))
-      .slice(0, 4)
-
-    const coreEntries = coreDefs.map((def) => {
+    const drillFor = (def: NodeTypeDef): PickerEntry | null => {
       if (hasApps && def.type === 'connector') {
         return {
           ...defEntry(def),
@@ -196,8 +180,30 @@ export function NodePicker({
           drillInto: 'agents' as const,
         }
       }
-      return defEntry(def)
-    })
+      return null
+    }
+
+    const byKey = new Map<string, PickerEntry>()
+    for (const def of [...triggerDefs, ...coreDefs]) {
+      // Recents saved as plain type picks resolve to the drill entry when one
+      // exists, so "Agent" opens the agent list from Recently used too.
+      byKey.set(`type:${def.type}`, drillFor(def) ?? defEntry(def))
+    }
+    for (const app of connectors) {
+      byKey.set(`app:${app.type}`, appEntry(app))
+      for (const action of Object.keys(app.actions)) {
+        byKey.set(`action:${app.type}:${action}`, actionEntry(app, action, true))
+      }
+    }
+    for (const preset of agentPresets) {
+      byKey.set(`preset:${preset.name}`, presetEntry(preset, agentDef?.color ?? '#8b5cf6'))
+    }
+    const recents = loadRecents()
+      .map((key) => byKey.get(key))
+      .filter((entry): entry is PickerEntry => Boolean(entry))
+      .slice(0, 4)
+
+    const coreEntries = coreDefs.map((def) => drillFor(def) ?? defEntry(def))
 
     const result: [string, PickerEntry[]][] = []
     if (recents.length > 0) result.push(['Recently used', recents])
