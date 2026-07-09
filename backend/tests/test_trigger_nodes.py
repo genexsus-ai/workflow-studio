@@ -54,6 +54,16 @@ def test_trigger_node_validates_and_requires_kind(client):
     assert any("trigger_kind" in issue["message"] for issue in bad["issues"])
 
 
+def test_edge_into_trigger_node_rejected(client):
+    doc = _doc({"trigger_kind": "schedule"})
+    doc["edges"].append({"source": "end", "target": "trigger"})
+
+    result = client.post("/api/v1/workflows/validate", json=doc).json()
+
+    assert result["valid"] is False
+    assert any("nothing can connect into" in issue["message"] for issue in result["issues"])
+
+
 def test_translate_skips_trigger_node_and_edges(client):
     from app.runner import translate
     from app.schemas import WorkflowDoc

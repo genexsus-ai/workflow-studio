@@ -375,6 +375,14 @@ def validate(doc: WorkflowDoc) -> ValidationResult:
     for edge in doc.edges:
         if edge.attach:
             continue
+        if node_type.get(edge.target) == "trigger":
+            issues.append(
+                ValidationIssue(
+                    level="error",
+                    message="Trigger nodes start the workflow — nothing can connect into them",
+                    node_id=edge.target,
+                )
+            )
         for endpoint in (edge.source, edge.target):
             if node_type.get(endpoint) in ("model", "memory"):
                 issues.append(

@@ -12,6 +12,8 @@ const STATUS_COLORS: Record<string, string> = {
 
 // Capability nodes hang off an agent's bottom ports instead of joining the flow
 const CAPABILITY_TYPES = new Set(['model', 'memory'])
+// Flow sources: nothing can connect INTO these (n8n-style single output)
+const NO_TARGET_TYPES = new Set(['input', 'trigger'])
 // Node types that can also be attached to an agent's Tools port
 const ATTACHABLE_TOOL_TYPES = new Set(['tool', 'mcp'])
 
@@ -58,7 +60,7 @@ export function StudioNode({ id, data, selected }: NodeProps<StudioNodeType>) {
       >
         ✕
       </button>
-      {!isCapability && data.nodeType !== 'input' && (
+      {!isCapability && !NO_TARGET_TYPES.has(data.nodeType) && (
         <Handle type="target" position={Position.Left} />
       )}
       <div className="studio-node-header">
