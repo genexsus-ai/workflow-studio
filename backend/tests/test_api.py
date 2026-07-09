@@ -1,6 +1,7 @@
 """Tests for the Workflow Studio backend API."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -890,7 +891,10 @@ def test_multi_agent_pipeline_join_and_model_selection(client, recording_llm):
         assert completed_ids.count(node["id"]) == 1, f"{node['id']} ran {completed_ids.count(node['id'])}x"
 
 
-MCP_FIXTURE = "/Users/irsalimran/Desktop/GenXAI-OSS/tests/fixtures/mcp_fixture_server.py"
+# Fixture MCP server ships in the repo root tests/fixtures directory.
+MCP_FIXTURE = str(
+    Path(__file__).resolve().parents[4] / "tests" / "fixtures" / "mcp_fixture_server.py"
+)
 
 
 def _register_fixture_mcp_server(client, name="local-tools"):
