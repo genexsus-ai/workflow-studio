@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
+import { listMcpServerTools } from '../api'
 import { nodeIcon } from '../lib/nodeIcons'
 import { loadRecents, saveRecent } from '../lib/recentPicks'
-import type { AgentPresetDef, ConnectorDef, NodeTypeDef, ToolDef } from '../types'
+import type { AgentPresetDef, ConnectorDef, McpServerSummary, McpToolInfo, NodeTypeDef, ToolDef } from '../types'
 
 /** What a picker selection resolves to: a node type plus optional
  * pre-filled config (e.g. a connector app + action). */
@@ -18,7 +19,7 @@ interface PickerEntry {
   iconBg: string
   label: string
   description: string
-  drillInto?: ConnectorDef | 'apps' | 'agents' | 'tools'
+  drillInto?: ConnectorDef | 'apps' | 'agents' | 'tools' | 'mcp' | { mcpServer: string }
   picked?: PickedNode
 }
 
@@ -27,6 +28,7 @@ interface NodePickerProps {
   connectors?: ConnectorDef[]
   agentPresets?: AgentPresetDef[]
   tools?: ToolDef[]
+  mcpServers?: McpServerSummary[]
   onPick: (picked: PickedNode) => void
   onClose: () => void
 }
@@ -75,6 +77,32 @@ function toolEntry(tool: ToolDef, toolColor: string): PickerEntry {
     picked: {
       type: 'tool',
       config: { tool_name: tool.name, tool_params: {} },
+      label: tool.name.replaceAll('_', ' '),
+    },
+  }
+}
+
+function mcpServerEntry(server: McpServerSummary, color: string): PickerEntry {
+  return {
+    key: `mcpserver:${server.name}`,
+    icon: '🧩',
+    iconBg: `${color}1c`,
+    label: server.name,
+    description: `${server.transport} · ${server.target}`,
+    drillInto: { mcpServer: server.name },
+  }
+}
+
+function mcpToolEntry(server: string, tool: McpToolInfo, color: string): PickerEntry {
+  return {
+    key: `mcptool:${server}:${tool.name}`,
+    icon: '🧩',
+    iconBg: `${color}1c`,
+    label: tool.name.replaceAll('_', ' '),
+    description: tool.description,
+    picked: {
+      type: 'mcp',
+      config: { server, tool: tool.name, params: {} },
       label: tool.name.replaceAll('_', ' '),
     },
   }
@@ -133,11 +161,32 @@ export function NodePicker({
   connectors = [],
   agentPresets = [],
   tools = [],
+  mcpServers = [],
   onPick,
   onClose,
 }: NodePickerProps) {
   const [query, setQuery] = useState('')
-  const [view, setView] = useState<'root' | 'apps' | 'agents' | 'tools' | ConnectorDef>('root')
+  const [view, setView] = useState<
+    'root' | 'apps' | 'agents' | 'tools' | 'mcp' | ConnectorDef | { mcpServer: string }
+  >('root')
+  const [mcpToolCache, setMcpToolCache] = useState<
+    Record<string, McpToolInfo[] | 'loading' | 'error'>
+  >({})
+
+  const mcpServerInView =
+    typeof view === 'object' && 'mcpServer' in view ? view.mcpServer : null
+
+  useEffect(() => {
+    if (!mcpServerInView || mcpToolCache[mcpServerInView]) return
+    setMcpToolCache((cache) => ({ ...cache, [mcpServerInView]: 'loading' }))
+    listMcpServerTools(mcpServerInView)
+      .then((fetched) =>
+        setMcpToolCache((cache) => ({ ...cache, [mcpServerInView]: fetched })),
+      )
+      .catch(() =>
+        setMcpToolCache((cache) => ({ ...cache, [mcpServerInView]: 'error' })),
+      )
+  }, [mcpServerInView, mcpToolCache])
 
   const pick = (picked: PickedNode, key: string) => {
     saveRecent(key)
@@ -153,6 +202,7 @@ export function NodePicker({
 
     const agentDef = nodeDefs.find((def) => def.type === 'agent')
     const toolDef = nodeDefs.find((def) => def.type === 'tool')
+    const mcpDef = nodeDefs.find((def) => def.type === 'mcp')
     if (view === 'apps') {
       return [['Apps', connectors.map(appEntry)]]
     }
@@ -165,6 +215,22 @@ export function NodePicker({
       const entries = toolDef ? [customToolEntry(toolDef)] : []
       entries.push(...tools.map((tool) => toolEntry(tool, toolDef?.color ?? '#f59e0b')))
       return [['Tools', entries]]
+    }
+    if (view === 'mcp') {
+      return [
+        ['MCP servers', mcpServers.map((server) => mcpServerEntry(server, mcpDef?.color ?? '#10b981'))],
+      ]
+    }
+    if (typeof view === 'object' && 'mcpServer' in view) {
+      const cached = mcpToolCache[view.mcpServer]
+      if (cached === 'loading' || cached === undefined) return [[view.mcpServer, []]]
+      if (cached === 'error') return [[`${view.mcpServer} — could not load tools`, []]]
+      return [
+        [
+          view.mcpServer,
+          cached.map((tool) => mcpToolEntry(view.mcpServer, tool, mcpDef?.color ?? '#10b981')),
+        ],
+      ]
     }
     if (view !== 'root') {
       return [[view.label, Object.keys(view.actions).map((a) => actionEntry(view, a, false))]]
@@ -224,6 +290,15 @@ export function NodePicker({
           drillInto: 'tools' as const,
         }
       }
+      if (mcpServers.length > 0 && def.type === 'mcp') {
+        return {
+          ...defEntry(def),
+          key: 'drill:mcp',
+          description: `${mcpServers.length} server${mcpServers.length === 1 ? '' : 's'}`,
+          picked: undefined,
+          drillInto: 'mcp' as const,
+        }
+      }
       return null
     }
 
@@ -257,7 +332,7 @@ export function NodePicker({
     if (triggerDefs.length > 0) result.push(['Triggers', triggerDefs.map(defEntry)])
     result.push(['Core', coreEntries])
     return result
-  }, [nodeDefs, connectors, agentPresets, tools, query, view])
+  }, [nodeDefs, connectors, agentPresets, tools, mcpServers, mcpToolCache, query, view])
 
   const flatEntries = sections.flatMap(([, entries]) => entries)
 
@@ -278,9 +353,17 @@ export function NodePicker({
           <button
             type="button"
             className="node-picker-back"
-            onClick={() => setView(typeof view === 'string' ? 'root' : 'apps')}
+            onClick={() =>
+              setView(
+                typeof view === 'string' ? 'root' : 'mcpServer' in view ? 'mcp' : 'apps',
+              )
+            }
           >
-            {typeof view === 'string' ? '← All nodes' : '← Apps'}
+            {typeof view === 'string'
+              ? '← All nodes'
+              : 'mcpServer' in view
+                ? '← MCP servers'
+                : '← Apps'}
           </button>
         ) : (
           <input
@@ -311,7 +394,13 @@ export function NodePicker({
                     {entry.drillInto && <span className="node-picker-arrow">→</span>}
                   </li>
                 ))}
-                {entries.length === 0 && <li className="node-picker-empty">No matching nodes</li>}
+                {entries.length === 0 && (
+                  <li className="node-picker-empty">
+                    {mcpServerInView && mcpToolCache[mcpServerInView] !== 'error'
+                      ? 'Loading tools…'
+                      : 'No matching nodes'}
+                  </li>
+                )}
               </ul>
             </div>
           ))}

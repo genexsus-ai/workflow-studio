@@ -511,6 +511,7 @@ export default function App() {
             connectors={palette?.connectors ?? []}
             agentPresets={palette?.agent_presets ?? []}
             tools={palette?.tools ?? []}
+            mcpServers={mcpServers}
             onAddConnected={onAddConnected}
             onAddAttached={onAddAttached}
             onNodesChange={onNodesChange}
