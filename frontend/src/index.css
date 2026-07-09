@@ -151,12 +151,16 @@ body {
   border-color: #94a3b8;
 }
 
-.palette-dot {
-  width: 10px;
-  height: 10px;
-  margin-top: 4px;
-  border-radius: 50%;
+.palette-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  font-size: 15px;
   flex-shrink: 0;
+  user-select: none;
 }
 
 .palette-label {
@@ -384,13 +388,66 @@ button.danger {
 
 .studio-node {
   position: relative;
-  min-width: 150px;
-  border: 1.5px solid #d4d4d8;
-  border-radius: 10px;
+  min-width: 170px;
+  max-width: 230px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
   background: white;
-  padding: 8px 12px;
+  padding: 10px 14px;
   font-size: 12px;
-  transition: box-shadow 0.15s ease;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  transition:
+    box-shadow 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.studio-node:hover {
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+}
+
+.studio-node.selected {
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.16);
+}
+
+/* n8n-style trigger: rounded-left profile + bolt badge, single output */
+.studio-node-trigger {
+  border-radius: 32px 14px 14px 32px;
+  padding-left: 18px;
+}
+
+.studio-node-bolt {
+  position: absolute;
+  left: -22px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 13px;
+  filter: drop-shadow(0 1px 1px rgba(15, 23, 42, 0.2));
+  pointer-events: none;
+}
+
+.studio-node-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.studio-node-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  font-size: 19px;
+  line-height: 1;
+  user-select: none;
+}
+
+.studio-node-text {
+  min-width: 0;
 }
 
 .studio-node-delete {
@@ -426,59 +483,68 @@ button.danger {
   background: #dc2626;
 }
 
-.studio-node-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 2px;
-}
-
-.studio-node-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.studio-node-type {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #64748b;
-}
-
 .studio-node-label {
   font-weight: 600;
   font-size: 13px;
-}
-
-.studio-node-subtitle {
-  font-size: 11px;
-  color: #64748b;
-  max-width: 200px;
+  color: #0f172a;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* n8n-style capability sub-nodes (model / memory) */
-.studio-node-capability {
-  border-radius: 24px;
-  background: #fafaf9;
-  min-width: 120px;
-  text-align: center;
+.studio-node-subtitle {
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.studio-node-capability .studio-node-header {
-  justify-content: center;
+/* round n8n-style flow ports */
+.studio-node .react-flow__handle {
+  width: 11px;
+  height: 11px;
+  border: 2px solid #94a3b8;
+  background: white;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.studio-node .react-flow__handle:hover {
+  border-color: #2563eb;
+  background: #dbeafe;
+}
+
+.studio-node .react-flow__handle-left {
+  left: -6px;
+}
+
+.studio-node .react-flow__handle-right {
+  right: -6px;
+}
+
+/* n8n-style capability sub-nodes (model / memory) */
+.studio-node-capability {
+  border-radius: 28px;
+  background: #fafaf9;
+  min-width: 140px;
+}
+
+.studio-node-capability .studio-node-icon {
+  width: 30px;
+  height: 30px;
+  font-size: 15px;
 }
 
 /* diamond ports for agent attachments */
 .studio-attach-handle {
   width: 9px !important;
   height: 9px !important;
+  border: 2px solid #94a3b8 !important;
   border-radius: 2px !important;
   transform: translate(-50%, 50%) rotate(45deg);
-  background: #94a3b8 !important;
+  background: #f8fafc !important;
 }
 
 .react-flow__handle-top.studio-attach-handle {
@@ -496,13 +562,25 @@ button.danger {
 }
 
 .studio-node-spinner {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   margin-left: auto;
+  flex-shrink: 0;
   border: 2px solid #bfdbfe;
   border-top-color: #2563eb;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
+}
+
+/* softer, slightly heavier edges */
+.react-flow__edge-path {
+  stroke: #94a3b8;
+  stroke-width: 1.8;
+}
+
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: #2563eb;
 }
 
 @keyframes spin {

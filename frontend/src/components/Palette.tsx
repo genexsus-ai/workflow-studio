@@ -1,3 +1,4 @@
+import { nodeIcon } from '../lib/nodeIcons'
 import type { NodeTypeDef } from '../types'
 
 interface PaletteProps {
@@ -22,7 +23,9 @@ export function Palette({ nodeTypes }: PaletteProps) {
           onDragStart={(event) => onDragStart(event, def.type)}
           title={def.description}
         >
-          <span className="palette-dot" style={{ background: def.color }} />
+          <span className="palette-icon" style={{ background: `${def.color}1c` }}>
+            {nodeIcon(def.type)}
+          </span>
           <div>
             <div className="palette-label">{def.label}</div>
             <div className="palette-description">{def.description}</div>
