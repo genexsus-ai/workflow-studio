@@ -11,11 +11,13 @@ import {
   type OnNodesChange,
   type OnSelectionChangeFunc,
 } from '@xyflow/react'
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
+import { ConnectPickerContext } from '../lib/connectContext'
 import type { StudioNode } from '../lib/translate'
 import type { NodeTypeDef } from '../types'
 import { FirstStepPicker } from './FirstStepPicker'
+import { NodePicker } from './NodePicker'
 import { StudioNode as StudioNodeComponent } from './nodes/StudioNode'
 
 const nodeTypes: NodeTypes = { studio: StudioNodeComponent }
@@ -29,6 +31,7 @@ interface CanvasProps {
   onConnect: OnConnect
   onSelectionChange: OnSelectionChangeFunc
   onDropNode: (type: string, position: { x: number; y: number }) => void
+  onAddConnected: (sourceId: string, type: string) => void
 }
 
 export function Canvas({
@@ -40,9 +43,11 @@ export function Canvas({
   onConnect,
   onSelectionChange,
   onDropNode,
+  onAddConnected,
 }: CanvasProps) {
   const { screenToFlowPosition } = useReactFlow()
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const [connectFrom, setConnectFrom] = useState<string | null>(null)
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault()
@@ -76,6 +81,7 @@ export function Canvas({
 
   return (
     <div className="canvas" ref={wrapperRef} onDragOver={onDragOver} onDrop={onDrop}>
+      <ConnectPickerContext.Provider value={setConnectFrom}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -92,7 +98,18 @@ export function Canvas({
         <MiniMap pannable zoomable />
         <Controls />
       </ReactFlow>
+      </ConnectPickerContext.Provider>
       {nodes.length === 0 && <FirstStepPicker nodeDefs={nodeDefs} onPick={addAtCenter} />}
+      {connectFrom && (
+        <NodePicker
+          nodeDefs={nodeDefs.filter((def) => !['trigger', 'input'].includes(def.type))}
+          onClose={() => setConnectFrom(null)}
+          onPick={(type) => {
+            onAddConnected(connectFrom, type)
+            setConnectFrom(null)
+          }}
+        />
+      )}
     </div>
   )
 }

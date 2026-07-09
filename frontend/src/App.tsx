@@ -151,6 +151,47 @@ export default function App() {
     [nodes, palette, colorFor],
   )
 
+  const onAddConnected = useCallback(
+    (sourceId: string, type: string) => {
+      const source = nodes.find((node) => node.id === sourceId)
+      if (!source) return
+      const taken = new Set(nodes.map((n) => n.id))
+      const id = nextNodeId(type, taken)
+      const def = palette?.node_types.find((t) => t.type === type)
+      const defaults: Record<string, unknown> = {}
+      def?.config_fields.forEach((field) => {
+        if (field.default !== undefined) defaults[field.name] = field.default
+      })
+      const node: StudioNode = {
+        id,
+        type: 'studio',
+        position: { x: source.position.x + 260, y: source.position.y },
+        data: {
+          nodeType: type,
+          label: def?.label ? `${def.label} ${id.split('_').pop()}` : id,
+          config: defaults,
+          status: 'idle',
+          color: colorFor(type) ?? '#64748b',
+        },
+      }
+      setNodes((current) => [...current, node])
+      setEdges((current) =>
+        addEdge(
+          {
+            source: sourceId,
+            target: id,
+            sourceHandle: null,
+            targetHandle: null,
+            data: { condition: null, parallel: false, attach: null },
+          },
+          current,
+        ),
+      )
+      setDirty(true)
+    },
+    [nodes, palette, colorFor],
+  )
+
   const onNodeConfigChange = useCallback(
     (nodeId: string, config: Record<string, unknown>, label?: string) => {
       setNodes((current) =>
@@ -437,6 +478,7 @@ export default function App() {
             nodes={nodes}
             edges={edges}
             nodeDefs={palette?.node_types ?? []}
+            onAddConnected={onAddConnected}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}

@@ -1153,3 +1153,47 @@ button.danger {
 .node-picker-empty:hover {
   background: transparent;
 }
+
+/* n8n-style "+" on unconnected outputs */
+.studio-node-add {
+  position: absolute;
+  right: -38px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1.5px solid #94a3b8;
+  border-radius: 6px;
+  background: white;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    border-color 0.12s ease,
+    color 0.12s ease,
+    background 0.12s ease;
+  z-index: 4;
+}
+
+.studio-node-add::before {
+  content: '';
+  position: absolute;
+  left: -18px;
+  top: 50%;
+  width: 17px;
+  height: 1.8px;
+  background: #94a3b8;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.studio-node-add:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+  background: #eff6ff;
+}

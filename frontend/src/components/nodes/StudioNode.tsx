@@ -1,6 +1,7 @@
-import { Handle, Position, useReactFlow, type NodeProps } from '@xyflow/react'
+import { Handle, Position, useReactFlow, useStore, type NodeProps } from '@xyflow/react'
 
 import type { StudioNode as StudioNodeType } from '../../lib/translate'
+import { useConnectPicker } from '../../lib/connectContext'
 import { nodeIcon } from '../../lib/nodeIcons'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -26,6 +27,10 @@ const AGENT_PORTS = [
 
 export function StudioNode({ id, data, selected }: NodeProps<StudioNodeType>) {
   const { deleteElements } = useReactFlow()
+  const openConnectPicker = useConnectPicker()
+  const hasOutgoing = useStore((state) =>
+    state.edges.some((edge) => edge.source === id && !edge.data?.attach),
+  )
   const ring = STATUS_COLORS[data.status] ?? 'transparent'
   const isCapability = CAPABILITY_TYPES.has(data.nodeType)
   const isTrigger = data.nodeType === 'trigger'
@@ -96,6 +101,20 @@ export function StudioNode({ id, data, selected }: NodeProps<StudioNodeType>) {
       </div>
       {!isCapability && data.nodeType !== 'output' && (
         <Handle type="source" position={Position.Right} />
+      )}
+      {!isCapability && data.nodeType !== 'output' && !hasOutgoing && (
+        <button
+          type="button"
+          className="studio-node-add nodrag"
+          title="Add connected node"
+          aria-label="Add connected node"
+          onClick={(event) => {
+            event.stopPropagation()
+            openConnectPicker(id)
+          }}
+        >
+          +
+        </button>
       )}
       {(isCapability || ATTACHABLE_TOOL_TYPES.has(data.nodeType)) && (
         <Handle
