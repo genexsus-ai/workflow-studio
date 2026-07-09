@@ -15,7 +15,7 @@ import { useCallback, useRef, useState } from 'react'
 
 import { ConnectPickerContext, PORT_TYPES, type ConnectRequest } from '../lib/connectContext'
 import type { StudioNode } from '../lib/translate'
-import type { AgentPresetDef, ConnectorDef, NodeTypeDef } from '../types'
+import type { AgentPresetDef, ConnectorDef, NodeTypeDef, ToolDef } from '../types'
 import { FirstStepPicker } from './FirstStepPicker'
 import { NodePicker, type PickedNode } from './NodePicker'
 import { StudioNode as StudioNodeComponent } from './nodes/StudioNode'
@@ -28,6 +28,7 @@ interface CanvasProps {
   nodeDefs: NodeTypeDef[]
   connectors: ConnectorDef[]
   agentPresets: AgentPresetDef[]
+  tools: ToolDef[]
   onNodesChange: OnNodesChange<StudioNode>
   onEdgesChange: OnEdgesChange
   onConnect: OnConnect
@@ -43,6 +44,7 @@ export function Canvas({
   nodeDefs,
   connectors,
   agentPresets,
+  tools,
   onNodesChange,
   onEdgesChange,
   onConnect,
@@ -110,6 +112,7 @@ export function Canvas({
           nodeDefs={nodeDefs}
           connectors={connectors}
           agentPresets={agentPresets}
+          tools={tools}
           onPick={addAtCenter}
         />
       )}
@@ -122,6 +125,7 @@ export function Canvas({
           }
           connectors={connectFrom.port ? [] : connectors}
           agentPresets={connectFrom.port ? [] : agentPresets}
+          tools={connectFrom.port && connectFrom.port !== 'tools' ? [] : tools}
           onClose={() => setConnectFrom(null)}
           onPick={(picked) => {
             if (connectFrom.port) {

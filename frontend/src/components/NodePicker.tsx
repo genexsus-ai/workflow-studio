@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 
 import { nodeIcon } from '../lib/nodeIcons'
 import { loadRecents, saveRecent } from '../lib/recentPicks'
-import type { AgentPresetDef, ConnectorDef, NodeTypeDef } from '../types'
+import type { AgentPresetDef, ConnectorDef, NodeTypeDef, ToolDef } from '../types'
 
 /** What a picker selection resolves to: a node type plus optional
  * pre-filled config (e.g. a connector app + action). */
@@ -18,7 +18,7 @@ interface PickerEntry {
   iconBg: string
   label: string
   description: string
-  drillInto?: ConnectorDef | 'apps' | 'agents'
+  drillInto?: ConnectorDef | 'apps' | 'agents' | 'tools'
   picked?: PickedNode
 }
 
@@ -26,6 +26,7 @@ interface NodePickerProps {
   nodeDefs: NodeTypeDef[]
   connectors?: ConnectorDef[]
   agentPresets?: AgentPresetDef[]
+  tools?: ToolDef[]
   onPick: (picked: PickedNode) => void
   onClose: () => void
 }
@@ -52,6 +53,30 @@ function appEntry(app: ConnectorDef): PickerEntry {
     label: app.label,
     description: `${actionCount} action${actionCount === 1 ? '' : 's'}`,
     drillInto: app,
+  }
+}
+
+function customToolEntry(def: NodeTypeDef): PickerEntry {
+  return {
+    ...defEntry(def),
+    key: 'type:tool',
+    label: 'Custom tool',
+    description: 'Start from a blank tool node and choose the tool in the panel',
+  }
+}
+
+function toolEntry(tool: ToolDef, toolColor: string): PickerEntry {
+  return {
+    key: `tool:${tool.name}`,
+    icon: '🛠️',
+    iconBg: `${toolColor}1c`,
+    label: tool.name.replaceAll('_', ' '),
+    description: tool.description,
+    picked: {
+      type: 'tool',
+      config: { tool_name: tool.name, tool_params: {} },
+      label: tool.name.replaceAll('_', ' '),
+    },
   }
 }
 
@@ -107,11 +132,12 @@ export function NodePicker({
   nodeDefs,
   connectors = [],
   agentPresets = [],
+  tools = [],
   onPick,
   onClose,
 }: NodePickerProps) {
   const [query, setQuery] = useState('')
-  const [view, setView] = useState<'root' | 'apps' | 'agents' | ConnectorDef>('root')
+  const [view, setView] = useState<'root' | 'apps' | 'agents' | 'tools' | ConnectorDef>('root')
 
   const pick = (picked: PickedNode, key: string) => {
     saveRecent(key)
@@ -126,6 +152,7 @@ export function NodePicker({
     const triggerDefs = nodeDefs.filter((def) => TRIGGER_TYPES.has(def.type))
 
     const agentDef = nodeDefs.find((def) => def.type === 'agent')
+    const toolDef = nodeDefs.find((def) => def.type === 'tool')
     if (view === 'apps') {
       return [['Apps', connectors.map(appEntry)]]
     }
@@ -133,6 +160,11 @@ export function NodePicker({
       const entries = agentDef ? [customAgentEntry(agentDef)] : []
       entries.push(...agentPresets.map((preset) => presetEntry(preset, agentDef?.color ?? '#8b5cf6')))
       return [['Agents', entries]]
+    }
+    if (view === 'tools') {
+      const entries = toolDef ? [customToolEntry(toolDef)] : []
+      entries.push(...tools.map((tool) => toolEntry(tool, toolDef?.color ?? '#f59e0b')))
+      return [['Tools', entries]]
     }
     if (view !== 'root') {
       return [[view.label, Object.keys(view.actions).map((a) => actionEntry(view, a, false))]]
@@ -148,6 +180,9 @@ export function NodePicker({
           `${preset.name} ${preset.role} ${preset.goal}`.toLowerCase().includes(needle),
         )
         .map((preset) => presetEntry(preset, agentDef?.color ?? '#8b5cf6'))
+      const matchingTools = tools
+        .filter((tool) => `${tool.name} ${tool.description}`.toLowerCase().includes(needle))
+        .map((tool) => toolEntry(tool, toolDef?.color ?? '#f59e0b'))
       const matchingActions = connectors.flatMap((app) => {
         const appMatch = `${app.label} ${app.type}`.toLowerCase().includes(needle)
         return Object.keys(app.actions)
@@ -158,7 +193,7 @@ export function NodePicker({
           )
           .map((action) => actionEntry(app, action, true))
       })
-      return [['Results', [...matchingDefs, ...matchingPresets, ...matchingActions]]]
+      return [['Results', [...matchingDefs, ...matchingPresets, ...matchingTools, ...matchingActions]]]
     }
 
     const drillFor = (def: NodeTypeDef): PickerEntry | null => {
@@ -180,6 +215,15 @@ export function NodePicker({
           drillInto: 'agents' as const,
         }
       }
+      if (tools.length > 0 && def.type === 'tool') {
+        return {
+          ...defEntry(def),
+          key: 'drill:tools',
+          description: `Custom, or ${tools.length} built-in tools`,
+          picked: undefined,
+          drillInto: 'tools' as const,
+        }
+      }
       return null
     }
 
@@ -198,6 +242,9 @@ export function NodePicker({
     for (const preset of agentPresets) {
       byKey.set(`preset:${preset.name}`, presetEntry(preset, agentDef?.color ?? '#8b5cf6'))
     }
+    for (const tool of tools) {
+      byKey.set(`tool:${tool.name}`, toolEntry(tool, toolDef?.color ?? '#f59e0b'))
+    }
     const recents = loadRecents()
       .map((key) => byKey.get(key))
       .filter((entry): entry is PickerEntry => Boolean(entry))
@@ -210,7 +257,7 @@ export function NodePicker({
     if (triggerDefs.length > 0) result.push(['Triggers', triggerDefs.map(defEntry)])
     result.push(['Core', coreEntries])
     return result
-  }, [nodeDefs, connectors, agentPresets, query, view])
+  }, [nodeDefs, connectors, agentPresets, tools, query, view])
 
   const flatEntries = sections.flatMap(([, entries]) => entries)
 
@@ -231,9 +278,9 @@ export function NodePicker({
           <button
             type="button"
             className="node-picker-back"
-            onClick={() => setView(view === 'apps' || view === 'agents' ? 'root' : 'apps')}
+            onClick={() => setView(typeof view === 'string' ? 'root' : 'apps')}
           >
-            {view === 'apps' || view === 'agents' ? '← All nodes' : '← Apps'}
+            {typeof view === 'string' ? '← All nodes' : '← Apps'}
           </button>
         ) : (
           <input

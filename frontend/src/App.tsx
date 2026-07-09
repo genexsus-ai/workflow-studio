@@ -510,6 +510,7 @@ export default function App() {
             nodeDefs={palette?.node_types ?? []}
             connectors={palette?.connectors ?? []}
             agentPresets={palette?.agent_presets ?? []}
+            tools={palette?.tools ?? []}
             onAddConnected={onAddConnected}
             onAddAttached={onAddAttached}
             onNodesChange={onNodesChange}

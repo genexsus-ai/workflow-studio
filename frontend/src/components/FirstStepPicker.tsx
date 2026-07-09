@@ -1,18 +1,25 @@
 import { useState } from 'react'
 
-import type { AgentPresetDef, ConnectorDef, NodeTypeDef } from '../types'
+import type { AgentPresetDef, ConnectorDef, NodeTypeDef, ToolDef } from '../types'
 import { NodePicker, type PickedNode } from './NodePicker'
 
 interface FirstStepPickerProps {
   nodeDefs: NodeTypeDef[]
   connectors?: ConnectorDef[]
   agentPresets?: AgentPresetDef[]
+  tools?: ToolDef[]
   onPick: (picked: PickedNode) => void
 }
 
 /** n8n-style empty-canvas affordance: a dashed + box that opens a
  * searchable node picker; picking a type drops it in the canvas center. */
-export function FirstStepPicker({ nodeDefs, connectors, agentPresets, onPick }: FirstStepPickerProps) {
+export function FirstStepPicker({
+  nodeDefs,
+  connectors,
+  agentPresets,
+  tools,
+  onPick,
+}: FirstStepPickerProps) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -33,6 +40,7 @@ export function FirstStepPicker({ nodeDefs, connectors, agentPresets, onPick }: 
           nodeDefs={nodeDefs}
           connectors={connectors}
           agentPresets={agentPresets}
+          tools={tools}
           onClose={() => setOpen(false)}
           onPick={(picked) => {
             onPick(picked)
