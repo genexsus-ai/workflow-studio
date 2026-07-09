@@ -90,9 +90,9 @@ function toolEntry(tool: ToolDef, toolColor: string): PickerEntry {
 // the agent library fall back to blank placeholder roles.
 const FLOW_AGENT_SCAFFOLDS: Record<string, string[]> = {
   critic_review: ['writer', 'editor'],
-  coordinator_worker: ['task_planner', 'researcher'],
-  delegator_worker: ['task_planner', 'researcher'],
-  map_reduce: ['researcher', 'summarizer'],
+  coordinator_worker: ['task_planner', 'researcher', 'writer'],
+  delegator_worker: ['delegator', 'researcher', 'writer'],
+  map_reduce: ['researcher', 'data_analyst', 'summarizer'],
   ensemble_voting: ['classifier', 'classifier'],
   auction: ['researcher', 'writer'],
   p2p: ['researcher', 'editor'],

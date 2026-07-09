@@ -97,7 +97,8 @@ def _flow_team_attachments(doc: WorkflowDoc) -> tuple[dict[str, list[dict[str, A
     """Fold agent nodes attached to a flow node's Agents port into its team.
 
     Attached agents join the team AFTER any inline config agents, ordered by
-    their canvas x position (left to right = pattern agent order).
+    canvas row then column (top row first, left to right within a row) —
+    so a lead agent placed above a worker row keeps agent-1 position.
 
     Returns (flow_id -> agent spec dicts, ids of attached agent nodes).
     """
@@ -125,7 +126,7 @@ def _flow_team_attachments(doc: WorkflowDoc) -> tuple[dict[str, list[dict[str, A
         )
 
     ordered = {
-        flow_id: [spec for _x, _y, spec in sorted(members, key=lambda m: (m[0], m[1]))]
+        flow_id: [spec for _x, _y, spec in sorted(members, key=lambda m: (m[1], m[0]))]
         for flow_id, members in teams.items()
     }
     return ordered, attached_ids

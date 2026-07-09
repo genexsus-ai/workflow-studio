@@ -252,6 +252,8 @@ export default function App() {
       }
 
       // Logic-shaped pattern: one team node with attached member agents.
+      // Two-tier layout: agent 1 (the lead — delegator/writer/...) sits
+      // directly under the Agents port; the rest form a worker row below.
       const flowNode = buildNode(
         { ...picked, config: { ...picked.config, agents: [] } },
         position,
@@ -261,11 +263,15 @@ export default function App() {
       const outNodes: StudioNode[] = [flowNode]
       const outEdges: Edge[] = []
       teamSpecs.forEach((spec, index) => {
-        const agentNode = buildAgent(
-          spec,
-          { x: position.x - 60 + index * 220, y: position.y + 150 },
-          ids,
-        )
+        const workerCount = teamSpecs.length - 1
+        const pos =
+          index === 0
+            ? { x: position.x + 20, y: position.y + 150 }
+            : {
+                x: position.x + 20 - ((workerCount - 1) * 240) / 2 + (index - 1) * 240,
+                y: position.y + 320,
+              }
+        const agentNode = buildAgent(spec, pos, ids)
         outNodes.push(agentNode)
         outEdges.push({
           id: `attach_${agentNode.id}_${flowNode.id}`,
