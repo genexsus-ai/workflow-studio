@@ -3,7 +3,6 @@
 from typing import Any
 
 from app.connectors_catalog import CONNECTOR_CATALOG
-
 from genxai.tools.registry import ToolRegistry
 
 MODEL_OPTIONS = [
@@ -25,7 +24,13 @@ FLOW_PATTERNS: list[dict[str, Any]] = [
         "order_hint": "Agent 1 = generator, Agent 2 = critic.",
         "min_agents": 2,
         "params": [
-            {"name": "max_iterations", "type": "number", "default": 3, "min": 1, "max": 10},
+            {
+                "name": "max_iterations",
+                "type": "number",
+                "default": 3,
+                "min": 1,
+                "max": 10,
+            },
         ],
     },
     {
@@ -68,9 +73,27 @@ FLOW_PATTERNS: list[dict[str, Any]] = [
         "min_agents": 2,
         "params": [
             {"name": "max_rounds", "type": "number", "default": 5, "min": 1, "max": 20},
-            {"name": "consensus_threshold", "type": "number", "default": 0.6, "min": 0, "max": 1},
-            {"name": "convergence_window", "type": "number", "default": 3, "min": 1, "max": 10},
-            {"name": "quality_threshold", "type": "number", "default": 0.85, "min": 0, "max": 1},
+            {
+                "name": "consensus_threshold",
+                "type": "number",
+                "default": 0.6,
+                "min": 0,
+                "max": 1,
+            },
+            {
+                "name": "convergence_window",
+                "type": "number",
+                "default": 3,
+                "min": 1,
+                "max": 10,
+            },
+            {
+                "name": "quality_threshold",
+                "type": "number",
+                "default": 0.85,
+                "min": 0,
+                "max": 1,
+            },
         ],
     },
     {
@@ -93,6 +116,45 @@ FLOW_PATTERNS: list[dict[str, Any]] = [
 
 NODE_TYPE_DEFS: list[dict[str, Any]] = [
     {
+        "type": "trigger",
+        "label": "Trigger",
+        "description": (
+            "Starts the workflow automatically. Saving a workflow with a "
+            "trigger node configures its automation (schedule or webhook); "
+            "the trigger itself is not an execution step."
+        ),
+        "color": "#ef4444",
+        "config_fields": [
+            {
+                "name": "trigger_kind",
+                "type": "select",
+                "required": True,
+                "default": "schedule",
+                "options": ["schedule", "webhook"],
+            },
+            {
+                "name": "interval_seconds",
+                "type": "number",
+                "required": False,
+                "default": 3600,
+                "min": 30,
+            },
+            {
+                "name": "webhook_provider",
+                "type": "select",
+                "required": False,
+                "default": "generic",
+                "options": ["generic", "github"],
+            },
+            {
+                "name": "webhook_event_filter",
+                "type": "string",
+                "required": False,
+                "placeholder": "issues.opened (GitHub webhooks only)",
+            },
+        ],
+    },
+    {
         "type": "input",
         "label": "Input",
         "description": "Workflow entry point; receives the run input.",
@@ -112,8 +174,18 @@ NODE_TYPE_DEFS: list[dict[str, Any]] = [
         "description": "An LLM agent with a role, goal, and optional tools.",
         "color": "#8b5cf6",
         "config_fields": [
-            {"name": "role", "type": "string", "required": True, "placeholder": "Research Analyst"},
-            {"name": "goal", "type": "text", "required": True, "placeholder": "Summarize the input"},
+            {
+                "name": "role",
+                "type": "string",
+                "required": True,
+                "placeholder": "Research Analyst",
+            },
+            {
+                "name": "goal",
+                "type": "text",
+                "required": True,
+                "placeholder": "Summarize the input",
+            },
             {
                 "name": "task",
                 "type": "text",
@@ -121,9 +193,26 @@ NODE_TYPE_DEFS: list[dict[str, Any]] = [
                 "placeholder": "Supports {{ node_id.data.result }} expressions",
             },
             {"name": "backstory", "type": "text", "required": False},
-            {"name": "llm_model", "type": "model_select", "required": False, "default": "claude-opus-4-8"},
-            {"name": "temperature", "type": "number", "required": False, "default": 0.7, "min": 0, "max": 1},
-            {"name": "tools", "type": "tool_multiselect", "required": False, "default": []},
+            {
+                "name": "llm_model",
+                "type": "model_select",
+                "required": False,
+                "default": "claude-opus-4-8",
+            },
+            {
+                "name": "temperature",
+                "type": "number",
+                "required": False,
+                "default": 0.7,
+                "min": 0,
+                "max": 1,
+            },
+            {
+                "name": "tools",
+                "type": "tool_multiselect",
+                "required": False,
+                "default": [],
+            },
         ],
     },
     {
@@ -165,7 +254,12 @@ NODE_TYPE_DEFS: list[dict[str, Any]] = [
         "description": "Routes flow based on a condition key in workflow state.",
         "color": "#ec4899",
         "config_fields": [
-            {"name": "condition", "type": "string", "required": True, "placeholder": "state key to test"},
+            {
+                "name": "condition",
+                "type": "string",
+                "required": True,
+                "placeholder": "state key to test",
+            },
         ],
     },
     {
@@ -175,7 +269,14 @@ NODE_TYPE_DEFS: list[dict[str, Any]] = [
         "color": "#14b8a6",
         "config_fields": [
             {"name": "condition", "type": "string", "required": False},
-            {"name": "max_iterations", "type": "number", "required": False, "default": 5, "min": 1, "max": 100},
+            {
+                "name": "max_iterations",
+                "type": "number",
+                "required": False,
+                "default": 5,
+                "min": 1,
+                "max": 100,
+            },
         ],
     },
     {
@@ -184,7 +285,12 @@ NODE_TYPE_DEFS: list[dict[str, Any]] = [
         "description": "Runs a multi-agent collaboration pattern (critic review, voting, map-reduce, ...) as one step.",
         "color": "#d946ef",
         "config_fields": [
-            {"name": "flow_type", "type": "flow_select", "required": True, "default": "critic_review"},
+            {
+                "name": "flow_type",
+                "type": "flow_select",
+                "required": True,
+                "default": "critic_review",
+            },
             {"name": "agents", "type": "agent_list", "required": True, "default": []},
             {
                 "name": "task",
@@ -211,8 +317,20 @@ NODE_TYPE_DEFS: list[dict[str, Any]] = [
         "color": "#10b981",
         "attachment": "model",
         "config_fields": [
-            {"name": "llm_model", "type": "model_select", "required": True, "default": "claude-opus-4-8"},
-            {"name": "temperature", "type": "number", "required": False, "default": 0.7, "min": 0, "max": 1},
+            {
+                "name": "llm_model",
+                "type": "model_select",
+                "required": True,
+                "default": "claude-opus-4-8",
+            },
+            {
+                "name": "temperature",
+                "type": "number",
+                "required": False,
+                "default": 0.7,
+                "min": 0,
+                "max": 1,
+            },
         ],
     },
     {
@@ -222,7 +340,12 @@ NODE_TYPE_DEFS: list[dict[str, Any]] = [
         "color": "#eab308",
         "attachment": "memory",
         "config_fields": [
-            {"name": "persistent", "type": "boolean", "required": False, "default": True},
+            {
+                "name": "persistent",
+                "type": "boolean",
+                "required": False,
+                "default": True,
+            },
             {
                 "name": "session_key",
                 "type": "string",

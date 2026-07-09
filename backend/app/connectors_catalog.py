@@ -11,7 +11,6 @@ from __future__ import annotations
 from typing import Any
 
 from app.credentials import get_credential_store
-
 from genxai.connectors import (
     Connector,
     GitHubConnector,

@@ -21,7 +21,6 @@ from typing import Any
 import yaml
 
 from app.schemas import EdgeDoc, NodeDoc, WorkflowDoc
-
 from genxai.core.graph.workflow_io import _validate_workflow_schema
 
 _NODE_TYPE_MAP = {

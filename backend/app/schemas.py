@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 NODE_TYPES = (
+    "trigger",
     "input",
     "output",
     "agent",

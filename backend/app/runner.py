@@ -5,8 +5,13 @@ import os
 from typing import Any
 
 from app.config import get_settings
-from app.schemas import ATTACH_KINDS, NODE_TYPES, ValidationIssue, ValidationResult, WorkflowDoc
-
+from app.schemas import (
+    ATTACH_KINDS,
+    NODE_TYPES,
+    ValidationIssue,
+    ValidationResult,
+    WorkflowDoc,
+)
 from genxai.core.execution import ExecutionStore
 
 logger = logging.getLogger(__name__)
@@ -95,9 +100,12 @@ def translate(doc: WorkflowDoc) -> tuple[list[dict[str, Any]], list[dict[str, An
     into the target agent's config, and their source nodes leave the flow.
     """
     agent_overrides, attached_ids = _agent_attachments(doc)
+    # Trigger nodes declare automation (schedule/webhook); they are not
+    # execution steps, so they and their edges never reach the executor.
+    trigger_ids = {node.id for node in doc.nodes if node.type == "trigger"}
     nodes = []
     for node in doc.nodes:
-        if node.type in ("model", "memory") or node.id in attached_ids:
+        if node.type in ("model", "memory", "trigger") or node.id in attached_ids:
             continue
         if node.type == "connector":
             # Connector nodes execute through the connector_action tool, so
@@ -140,10 +148,12 @@ def translate(doc: WorkflowDoc) -> tuple[list[dict[str, Any]], list[dict[str, An
                 }
             )
         else:
-            nodes.append({"id": node.id, "type": node.type, "config": dict(node.config)})
+            nodes.append(
+                {"id": node.id, "type": node.type, "config": dict(node.config)}
+            )
     edges = []
     for edge in doc.edges:
-        if edge.attach:
+        if edge.attach or edge.source in trigger_ids or edge.target in trigger_ids:
             continue
         edge_dict: dict[str, Any] = {"source": edge.source, "target": edge.target}
         if edge.condition:
@@ -173,7 +183,11 @@ def resolve_subgraphs(doc: WorkflowDoc) -> dict[str, dict[str, Any]]:
             continue
         referenced = store.get(workflow_id)
         if referenced is None:
-            logger.warning("Subworkflow node '%s' references missing workflow '%s'", node.id, workflow_id)
+            logger.warning(
+                "Subworkflow node '%s' references missing workflow '%s'",
+                node.id,
+                workflow_id,
+            )
             continue
         sub_nodes, sub_edges = translate(referenced)
         subgraphs[workflow_id] = {"nodes": sub_nodes, "edges": sub_edges}
@@ -192,22 +206,47 @@ def validate(doc: WorkflowDoc) -> ValidationResult:
     for node in doc.nodes:
         if node.id in seen:
             issues.append(
-                ValidationIssue(level="error", message=f"Duplicate node id '{node.id}'", node_id=node.id)
+                ValidationIssue(
+                    level="error",
+                    message=f"Duplicate node id '{node.id}'",
+                    node_id=node.id,
+                )
             )
         seen.add(node.id)
         if node.type not in NODE_TYPES:
             issues.append(
                 ValidationIssue(
-                    level="error", message=f"Unknown node type '{node.type}'", node_id=node.id
+                    level="error",
+                    message=f"Unknown node type '{node.type}'",
+                    node_id=node.id,
+                )
+            )
+        if node.type == "trigger" and node.config.get("trigger_kind") not in {
+            "schedule",
+            "webhook",
+        }:
+            issues.append(
+                ValidationIssue(
+                    level="error",
+                    message="Trigger node needs trigger_kind 'schedule' or 'webhook'",
+                    node_id=node.id,
                 )
             )
         if node.type == "agent" and not node.config.get("role"):
             issues.append(
-                ValidationIssue(level="warning", message="Agent node has no role", node_id=node.id)
+                ValidationIssue(
+                    level="warning", message="Agent node has no role", node_id=node.id
+                )
             )
-        if node.type == "tool" and not (node.config.get("tool_name") or node.config.get("name")):
+        if node.type == "tool" and not (
+            node.config.get("tool_name") or node.config.get("name")
+        ):
             issues.append(
-                ValidationIssue(level="error", message="Tool node has no tool selected", node_id=node.id)
+                ValidationIssue(
+                    level="error",
+                    message="Tool node has no tool selected",
+                    node_id=node.id,
+                )
             )
         if node.type == "mcp":
             for field in ("server", "tool"):
@@ -291,7 +330,8 @@ def validate(doc: WorkflowDoc) -> ValidationResult:
             if edge.attach not in ATTACH_KINDS:
                 issues.append(
                     ValidationIssue(
-                        level="error", message=f"Unknown attachment kind '{edge.attach}'"
+                        level="error",
+                        message=f"Unknown attachment kind '{edge.attach}'",
                     )
                 )
                 continue
@@ -354,7 +394,9 @@ def validate(doc: WorkflowDoc) -> ValidationResult:
                 )
 
     flow_nodes = [
-        n for n in doc.nodes if n.type not in ("model", "memory") and n.id not in attached_sources
+        n
+        for n in doc.nodes
+        if n.type not in ("model", "memory") and n.id not in attached_sources
     ]
     targets = {edge.target for edge in doc.edges if not edge.attach}
     has_entry = any(n.id not in targets for n in flow_nodes) or any(
@@ -362,10 +404,14 @@ def validate(doc: WorkflowDoc) -> ValidationResult:
     )
     if flow_nodes and not has_entry:
         issues.append(
-            ValidationIssue(level="error", message="No entry point (every node has incoming edges)")
+            ValidationIssue(
+                level="error", message="No entry point (every node has incoming edges)"
+            )
         )
 
-    return ValidationResult(valid=not any(i.level == "error" for i in issues), issues=issues)
+    return ValidationResult(
+        valid=not any(i.level == "error" for i in issues), issues=issues
+    )
 
 
 def _apply_api_keys() -> None:

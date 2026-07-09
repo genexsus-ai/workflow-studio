@@ -135,6 +135,12 @@ def test_workflow_to_doc_mapping_and_layout(client):
     assert doc.automation.schedule_enabled is True
     assert doc.automation.interval_seconds == 600
 
+    # Schedule plans surface as a visible trigger node feeding the input node.
+    trigger = next(node for node in doc.nodes if node.type == "trigger")
+    assert trigger.config == {"trigger_kind": "schedule", "interval_seconds": 600}
+    assert any(edge.source == trigger.id and edge.target == "start" for edge in doc.edges)
+    assert by_id[trigger.id].x < by_id["start"].x
+
     conditional = next(edge for edge in doc.edges if edge.target == "notify")
     assert conditional.condition == "category == 'urgent'"
 

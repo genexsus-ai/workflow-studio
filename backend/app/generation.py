@@ -102,7 +102,9 @@ def studio_capability_catalog() -> CapabilityCatalog:
                     "name": f"{connector['type']}.{action}",
                     "description": spec.get("description", ""),
                     "parameters": {param["name"]: {} for param in params},
-                    "required": [param["name"] for param in params if param.get("required")],
+                    "required": [
+                        param["name"] for param in params if param.get("required")
+                    ],
                 }
             )
     return build_capability_catalog(extra_sections={"connector": connector_entries})
@@ -126,7 +128,9 @@ def _layout_positions(
             return 0
         parents = incoming.get(node_id, [])
         value = (
-            0 if not parents else 1 + max(depth_of(parent, seen | {node_id}) for parent in parents)
+            0
+            if not parents
+            else 1 + max(depth_of(parent, seen | {node_id}) for parent in parents)
         )
         depths[node_id] = value
         return value
@@ -200,10 +204,39 @@ def _automation_from_trigger(trigger: dict[str, Any] | None) -> AutomationConfig
     return AutomationConfig()
 
 
+def _trigger_node_dict(
+    trigger: dict[str, Any], taken_ids: set[str]
+) -> dict[str, Any] | None:
+    """A canvas trigger node for a schedule/webhook plan trigger, or None."""
+    kind = trigger.get("kind", "manual")
+    if kind not in {"schedule", "webhook"}:
+        return None
+    config = trigger.get("config", {}) or {}
+    node_id = "trigger" if "trigger" not in taken_ids else "workflow_trigger"
+    node_config: dict[str, Any] = {"trigger_kind": kind}
+    if kind == "schedule":
+        node_config["interval_seconds"] = int(config.get("interval_seconds", 3600))
+    else:
+        node_config["webhook_provider"] = config.get("provider", "generic")
+        if config.get("event_filter"):
+            node_config["webhook_event_filter"] = config["event_filter"]
+    return {"id": node_id, "type": "trigger", "config": node_config}
+
+
 def workflow_to_doc(workflow: dict[str, Any]) -> WorkflowDoc:
     """Convert a compiled library workflow dict into a canvas WorkflowDoc."""
-    nodes = workflow["graph"]["nodes"]
-    edges = workflow["graph"]["edges"]
+    nodes = list(workflow["graph"]["nodes"])
+    edges = list(workflow["graph"]["edges"])
+
+    # Schedule/webhook plans get a visible trigger node feeding the input
+    # node; saving the doc derives the automation config from it.
+    trigger_node = _trigger_node_dict(
+        workflow.get("trigger") or {}, {node["id"] for node in nodes}
+    )
+    if trigger_node is not None:
+        nodes.insert(0, trigger_node)
+        edges.insert(0, {"from": trigger_node["id"], "to": "start"})
+
     positions = _layout_positions(nodes, edges)
 
     doc_nodes = [_doc_node(node, positions[node["id"]]) for node in nodes]

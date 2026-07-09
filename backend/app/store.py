@@ -1,6 +1,5 @@
 """JSON-file persistence for workflow documents."""
 
-import json
 import uuid
 from pathlib import Path
 

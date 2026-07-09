@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 
 from app.automation import (
     ScheduleManager,
+    apply_trigger_nodes,
     find_workflow_by_token,
     generate_webhook_token,
     verify_github_signature,
@@ -14,7 +15,12 @@ from app.automation import (
 from app.config import get_settings
 from app.connectors_catalog import CONNECTOR_CATALOG
 from app.credentials import ConnectorConfigEntry, get_credential_store, safe_listing
-from app.mcp_registry import build_mcp_client, get_mcp_store, safe_mcp_listing, sync_agent_tools
+from app.mcp_registry import (
+    build_mcp_client,
+    get_mcp_store,
+    safe_mcp_listing,
+    sync_agent_tools,
+)
 from app.palette import build_palette
 from app.run_manager import get_run_manager
 from app.runner import get_execution_store, validate
@@ -63,8 +69,11 @@ def list_workflows() -> list[WorkflowSummary]:
 
 
 @router.post("/workflows", response_model=WorkflowDoc, status_code=201)
-def create_workflow(doc: WorkflowDoc) -> WorkflowDoc:
-    return get_store().create(doc)
+async def create_workflow(doc: WorkflowDoc) -> WorkflowDoc:
+    apply_trigger_nodes(doc)
+    saved = get_store().create(doc)
+    await _sync_schedule(saved)
+    return saved
 
 
 @router.post("/workflows/import-yaml", response_model=WorkflowDoc, status_code=201)
@@ -87,11 +96,38 @@ def get_workflow(workflow_id: str) -> WorkflowDoc:
 
 
 @router.put("/workflows/{workflow_id}", response_model=WorkflowDoc)
-def update_workflow(workflow_id: str, doc: WorkflowDoc) -> WorkflowDoc:
+async def update_workflow(workflow_id: str, doc: WorkflowDoc) -> WorkflowDoc:
+    apply_trigger_nodes(
+        doc, existing=getattr(get_store().get(workflow_id), "automation", None)
+    )
     updated = get_store().update(workflow_id, doc)
     if updated is None:
         raise HTTPException(status_code=404, detail="Workflow not found")
+    await _sync_schedule(updated)
     return updated
+
+
+async def _sync_schedule(doc: WorkflowDoc) -> None:
+    """Keep the schedule manager in step with the doc's automation state.
+
+    Best-effort: a save must not fail because the scheduler could not start
+    (e.g. the optional apscheduler dependency is missing); the enabled flag
+    is persisted either way and startup resume will retry.
+    """
+    if doc.id is None:
+        return
+    manager = get_schedule_manager()
+    try:
+        if doc.automation.schedule_enabled:
+            await manager.enable(doc)
+        else:
+            await manager.disable(doc.id)
+    except Exception as exc:  # noqa: BLE001
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Could not sync schedule for workflow %s: %s", doc.id, exc
+        )
 
 
 @router.delete("/workflows/{workflow_id}", status_code=204)
@@ -112,11 +148,15 @@ async def generate_workflow_endpoint(payload: GenerateRequest) -> dict:
             crew=payload.crew,
             workflow_name=payload.name,
             current_workflow=(
-                payload.current_workflow.model_dump() if payload.current_workflow else None
+                payload.current_workflow.model_dump()
+                if payload.current_workflow
+                else None
             ),
         )
     except Exception as exc:  # pragma: no cover - provider/config failures
-        raise HTTPException(status_code=422, detail=f"generation failed: {exc}") from exc
+        raise HTTPException(
+            status_code=422, detail=f"generation failed: {exc}"
+        ) from exc
 
 
 @router.post("/workflows/generate/{generation_id}/accept")
@@ -217,7 +257,9 @@ def _sse(run_id: str) -> StreamingResponse:
 
 
 @router.post("/workflows/{workflow_id}/run/stream")
-async def run_workflow_stream(workflow_id: str, payload: RunRequest) -> StreamingResponse:
+async def run_workflow_stream(
+    workflow_id: str, payload: RunRequest
+) -> StreamingResponse:
     doc = get_store().get(workflow_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="Workflow not found")
@@ -225,9 +267,14 @@ async def run_workflow_stream(workflow_id: str, payload: RunRequest) -> Streamin
     if not result.valid:
         raise HTTPException(
             status_code=422,
-            detail={"message": "Workflow is invalid", "issues": [i.model_dump() for i in result.issues]},
+            detail={
+                "message": "Workflow is invalid",
+                "issues": [i.model_dump() for i in result.issues],
+            },
         )
-    run_id = get_run_manager().submit(doc, payload.input, trigger="manual", model_override=payload.model_override)
+    run_id = get_run_manager().submit(
+        doc, payload.input, trigger="manual", model_override=payload.model_override
+    )
     return _sse(run_id)
 
 
@@ -238,10 +285,16 @@ async def run_adhoc_stream(payload: AdhocRunRequest) -> StreamingResponse:
     if not result.valid:
         raise HTTPException(
             status_code=422,
-            detail={"message": "Workflow is invalid", "issues": [i.model_dump() for i in result.issues]},
+            detail={
+                "message": "Workflow is invalid",
+                "issues": [i.model_dump() for i in result.issues],
+            },
         )
     run_id = get_run_manager().submit(
-        payload.workflow, payload.input, trigger="manual", model_override=payload.model_override
+        payload.workflow,
+        payload.input,
+        trigger="manual",
+        model_override=payload.model_override,
     )
     return _sse(run_id)
 
@@ -297,7 +350,9 @@ async def fire_webhook(token: str, request: Request) -> dict:
     if automation.webhook_provider == "github":
         if automation.webhook_secret:
             signature = request.headers.get("X-Hub-Signature-256")
-            if not verify_github_signature(automation.webhook_secret, raw_body, signature):
+            if not verify_github_signature(
+                automation.webhook_secret, raw_body, signature
+            ):
                 raise HTTPException(status_code=401, detail="Invalid signature")
         event = request.headers.get("X-GitHub-Event", "")
         action = payload.get("action")
@@ -320,10 +375,14 @@ def list_credentials() -> list[dict]:
 @router.post("/credentials", status_code=201)
 def create_credential(payload: CredentialCreate) -> dict:
     if not payload.name or not payload.name.replace("-", "").replace("_", "").isalnum():
-        raise HTTPException(status_code=422, detail="Credential name must be alphanumeric/-/_")
+        raise HTTPException(
+            status_code=422, detail="Credential name must be alphanumeric/-/_"
+        )
     known = {entry["type"] for entry in CONNECTOR_CATALOG}
     if payload.connector_type not in known:
-        raise HTTPException(status_code=422, detail=f"Unknown connector type '{payload.connector_type}'")
+        raise HTTPException(
+            status_code=422, detail=f"Unknown connector type '{payload.connector_type}'"
+        )
     store = get_credential_store()
     store.save(
         ConnectorConfigEntry(
@@ -349,9 +408,13 @@ def list_mcp_servers() -> list[dict]:
 @router.post("/mcp/servers", status_code=201)
 async def create_mcp_server(payload: MCPServerCreate) -> dict:
     if not payload.name or not payload.name.replace("-", "").replace("_", "").isalnum():
-        raise HTTPException(status_code=422, detail="Server name must be alphanumeric/-/_")
+        raise HTTPException(
+            status_code=422, detail="Server name must be alphanumeric/-/_"
+        )
     if payload.transport not in {"mcp_stdio", "mcp_http"}:
-        raise HTTPException(status_code=422, detail="transport must be 'mcp_stdio' or 'mcp_http'")
+        raise HTTPException(
+            status_code=422, detail="transport must be 'mcp_stdio' or 'mcp_http'"
+        )
     if payload.transport == "mcp_stdio" and not payload.config.get("command"):
         raise HTTPException(status_code=422, detail="stdio servers need a 'command'")
     if payload.transport == "mcp_http" and not payload.config.get("url"):
@@ -362,7 +425,11 @@ async def create_mcp_server(payload: MCPServerCreate) -> dict:
         )
     )
     agent_tools = await sync_agent_tools()
-    return {"name": payload.name, "transport": payload.transport, "agent_tools": agent_tools}
+    return {
+        "name": payload.name,
+        "transport": payload.transport,
+        "agent_tools": agent_tools,
+    }
 
 
 @router.delete("/mcp/servers/{name}", status_code=204)
@@ -439,7 +506,5 @@ def delete_run(run_id: str) -> None:
     if record is None:
         raise HTTPException(status_code=404, detail="Run not found")
     if record.status in {"queued", "running"}:
-        raise HTTPException(
-            status_code=409, detail="Cancel the run before deleting it"
-        )
+        raise HTTPException(status_code=409, detail="Cancel the run before deleting it")
     store.delete(run_id)

@@ -9,7 +9,6 @@ never include config values.
 from __future__ import annotations
 
 from app.config import get_settings
-
 from genxai.connectors.config_store import ConnectorConfigEntry, ConnectorConfigStore
 
 _store: ConnectorConfigStore | None = None

@@ -45,6 +45,7 @@ export interface ConfigField {
   placeholder?: string
   min?: number
   max?: number
+  options?: string[]
 }
 
 export interface NodeTypeDef {

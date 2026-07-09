@@ -126,6 +126,16 @@ export function ConfigPanel({
             onChange={(event) => setValue(field.name, event.target.checked)}
           />
         )
+      case 'select':
+        return (
+          <select value={String(value)} onChange={(event) => setValue(field.name, event.target.value)}>
+            {(field.options ?? []).map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        )
       case 'model_select':
         return (
           <select value={String(value)} onChange={(event) => setValue(field.name, event.target.value)}>

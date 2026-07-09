@@ -14,8 +14,7 @@ import logging
 from typing import Any
 
 from app.config import get_settings
-
-from genxai.connectors.config_store import ConnectorConfigEntry, ConnectorConfigStore
+from genxai.connectors.config_store import ConnectorConfigStore
 from genxai.tools.base import Tool, ToolCategory, ToolMetadata, ToolParameter
 from genxai.tools.mcp_client import MCPToolClient
 

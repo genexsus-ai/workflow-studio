@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 def register_studio_tools() -> int:
     """Register the curated tool set; returns how many tools are available."""
+    from app.connectors_catalog import ConnectorActionTool
+    from app.mcp_registry import MCPActionTool
     from genxai.tools.builtin.computation.calculator import CalculatorTool
     from genxai.tools.builtin.computation.data_validator import DataValidatorTool
     from genxai.tools.builtin.computation.hash_generator import HashGeneratorTool
@@ -31,9 +33,6 @@ def register_studio_tools() -> int:
     from genxai.tools.builtin.web.http_client import HTTPClientTool
     from genxai.tools.builtin.web.url_validator import URLValidatorTool
     from genxai.tools.builtin.web.web_scraper import WebScraperTool
-
-    from app.connectors_catalog import ConnectorActionTool
-    from app.mcp_registry import MCPActionTool
 
     tool_classes = [
         ConnectorActionTool,
