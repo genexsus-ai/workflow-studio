@@ -15,7 +15,7 @@ import { useCallback, useRef, useState } from 'react'
 
 import { ConnectPickerContext, PORT_TYPES, type ConnectRequest } from '../lib/connectContext'
 import type { StudioNode } from '../lib/translate'
-import type { AgentPresetDef, ConnectorDef, McpServerSummary, NodeTypeDef, ToolDef } from '../types'
+import type { AgentPresetDef, ConnectorDef, FlowPatternDef, McpServerSummary, NodeTypeDef, ToolDef } from '../types'
 import { FirstStepPicker } from './FirstStepPicker'
 import { NodePicker, type PickedNode } from './NodePicker'
 import { StudioNode as StudioNodeComponent } from './nodes/StudioNode'
@@ -30,6 +30,7 @@ interface CanvasProps {
   agentPresets: AgentPresetDef[]
   tools: ToolDef[]
   mcpServers: McpServerSummary[]
+  flows: FlowPatternDef[]
   onNodesChange: OnNodesChange<StudioNode>
   onEdgesChange: OnEdgesChange
   onConnect: OnConnect
@@ -47,6 +48,7 @@ export function Canvas({
   agentPresets,
   tools,
   mcpServers,
+  flows,
   onNodesChange,
   onEdgesChange,
   onConnect,
@@ -116,6 +118,7 @@ export function Canvas({
           agentPresets={agentPresets}
           tools={tools}
           mcpServers={mcpServers}
+          flows={flows}
           onPick={addAtCenter}
         />
       )}
@@ -130,6 +133,7 @@ export function Canvas({
           agentPresets={connectFrom.port ? [] : agentPresets}
           tools={connectFrom.port && connectFrom.port !== 'tools' ? [] : tools}
           mcpServers={connectFrom.port && connectFrom.port !== 'tools' ? [] : mcpServers}
+          flows={connectFrom.port ? [] : flows}
           onClose={() => setConnectFrom(null)}
           onPick={(picked) => {
             if (connectFrom.port) {

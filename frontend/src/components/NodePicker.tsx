@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { listMcpServerTools } from '../api'
 import { nodeIcon } from '../lib/nodeIcons'
 import { loadRecents, saveRecent } from '../lib/recentPicks'
-import type { AgentPresetDef, ConnectorDef, McpServerSummary, McpToolInfo, NodeTypeDef, ToolDef } from '../types'
+import type { AgentPresetDef, ConnectorDef, FlowPatternDef, McpServerSummary, McpToolInfo, NodeTypeDef, ToolDef } from '../types'
 
 /** What a picker selection resolves to: a node type plus optional
  * pre-filled config (e.g. a connector app + action). */
@@ -19,7 +19,7 @@ interface PickerEntry {
   iconBg: string
   label: string
   description: string
-  drillInto?: ConnectorDef | 'apps' | 'agents' | 'tools' | 'mcp' | { mcpServer: string }
+  drillInto?: ConnectorDef | 'apps' | 'agents' | 'tools' | 'mcp' | 'flows' | { mcpServer: string }
   picked?: PickedNode
 }
 
@@ -29,6 +29,7 @@ interface NodePickerProps {
   agentPresets?: AgentPresetDef[]
   tools?: ToolDef[]
   mcpServers?: McpServerSummary[]
+  flows?: FlowPatternDef[]
   onPick: (picked: PickedNode) => void
   onClose: () => void
 }
@@ -78,6 +79,45 @@ function toolEntry(tool: ToolDef, toolColor: string): PickerEntry {
       type: 'tool',
       config: { tool_name: tool.name, tool_params: {} },
       label: tool.name.replaceAll('_', ' '),
+    },
+  }
+}
+
+// Placeholder roles per pattern so a picked flow arrives with its
+// structure visible — the user fills in roles/goals in the panel.
+const FLOW_ROLE_SCAFFOLDS: Record<string, string[]> = {
+  critic_review: ['Writer', 'Critic'],
+  coordinator_worker: ['Coordinator', 'Worker'],
+  delegator_worker: ['Delegator', 'Worker'],
+  map_reduce: ['Worker', 'Combiner'],
+  ensemble_voting: ['Voter 1', 'Voter 2'],
+  auction: ['Bidder 1', 'Bidder 2'],
+  p2p: ['Peer 1', 'Peer 2'],
+  round_robin: ['Agent 1', 'Agent 2'],
+  parallel: ['Agent 1', 'Agent 2'],
+}
+
+function flowPatternEntry(pattern: FlowPatternDef, color: string): PickerEntry {
+  const roles = [...(FLOW_ROLE_SCAFFOLDS[pattern.id] ?? [])]
+  while (roles.length < pattern.min_agents) roles.push(`Agent ${roles.length + 1}`)
+  return {
+    key: `flow:${pattern.id}`,
+    icon: '👥',
+    iconBg: `${color}1c`,
+    label: pattern.label,
+    description: `${pattern.description} ${pattern.order_hint}`,
+    picked: {
+      type: 'flow',
+      config: {
+        flow_type: pattern.id,
+        agents: roles.map((role) => ({ role, goal: '' })),
+        params: Object.fromEntries(
+          pattern.params
+            .filter((param) => param.default !== undefined)
+            .map((param) => [param.name, param.default]),
+        ),
+      },
+      label: pattern.label,
     },
   }
 }
@@ -162,12 +202,13 @@ export function NodePicker({
   agentPresets = [],
   tools = [],
   mcpServers = [],
+  flows = [],
   onPick,
   onClose,
 }: NodePickerProps) {
   const [query, setQuery] = useState('')
   const [view, setView] = useState<
-    'root' | 'apps' | 'agents' | 'tools' | 'mcp' | ConnectorDef | { mcpServer: string }
+    'root' | 'apps' | 'agents' | 'tools' | 'mcp' | 'flows' | ConnectorDef | { mcpServer: string }
   >('root')
   const [mcpToolCache, setMcpToolCache] = useState<
     Record<string, McpToolInfo[] | 'loading' | 'error'>
@@ -203,6 +244,7 @@ export function NodePicker({
     const agentDef = nodeDefs.find((def) => def.type === 'agent')
     const toolDef = nodeDefs.find((def) => def.type === 'tool')
     const mcpDef = nodeDefs.find((def) => def.type === 'mcp')
+    const flowDef = nodeDefs.find((def) => def.type === 'flow')
     if (view === 'apps') {
       return [['Apps', connectors.map(appEntry)]]
     }
@@ -215,6 +257,14 @@ export function NodePicker({
       const entries = toolDef ? [customToolEntry(toolDef)] : []
       entries.push(...tools.map((tool) => toolEntry(tool, toolDef?.color ?? '#f59e0b')))
       return [['Tools', entries]]
+    }
+    if (view === 'flows') {
+      return [
+        [
+          'Collaboration patterns',
+          flows.map((pattern) => flowPatternEntry(pattern, flowDef?.color ?? '#ec4899')),
+        ],
+      ]
     }
     if (view === 'mcp') {
       return [
@@ -249,6 +299,11 @@ export function NodePicker({
       const matchingTools = tools
         .filter((tool) => `${tool.name} ${tool.description}`.toLowerCase().includes(needle))
         .map((tool) => toolEntry(tool, toolDef?.color ?? '#f59e0b'))
+      const matchingFlows = flows
+        .filter((pattern) =>
+          `${pattern.id} ${pattern.label} ${pattern.description}`.toLowerCase().includes(needle),
+        )
+        .map((pattern) => flowPatternEntry(pattern, flowDef?.color ?? '#ec4899'))
       const matchingActions = connectors.flatMap((app) => {
         const appMatch = `${app.label} ${app.type}`.toLowerCase().includes(needle)
         return Object.keys(app.actions)
@@ -259,7 +314,7 @@ export function NodePicker({
           )
           .map((action) => actionEntry(app, action, true))
       })
-      return [['Results', [...matchingDefs, ...matchingPresets, ...matchingTools, ...matchingActions]]]
+      return [['Results', [...matchingDefs, ...matchingPresets, ...matchingTools, ...matchingFlows, ...matchingActions]]]
     }
 
     const drillFor = (def: NodeTypeDef): PickerEntry | null => {
@@ -299,6 +354,15 @@ export function NodePicker({
           drillInto: 'mcp' as const,
         }
       }
+      if (flows.length > 0 && def.type === 'flow') {
+        return {
+          ...defEntry(def),
+          key: 'drill:flows',
+          description: `${flows.length} collaboration patterns`,
+          picked: undefined,
+          drillInto: 'flows' as const,
+        }
+      }
       return null
     }
 
@@ -320,6 +384,9 @@ export function NodePicker({
     for (const tool of tools) {
       byKey.set(`tool:${tool.name}`, toolEntry(tool, toolDef?.color ?? '#f59e0b'))
     }
+    for (const pattern of flows) {
+      byKey.set(`flow:${pattern.id}`, flowPatternEntry(pattern, flowDef?.color ?? '#ec4899'))
+    }
     const recents = loadRecents()
       .map((key) => byKey.get(key))
       .filter((entry): entry is PickerEntry => Boolean(entry))
@@ -332,7 +399,7 @@ export function NodePicker({
     if (triggerDefs.length > 0) result.push(['Triggers', triggerDefs.map(defEntry)])
     result.push(['Core', coreEntries])
     return result
-  }, [nodeDefs, connectors, agentPresets, tools, mcpServers, mcpToolCache, query, view])
+  }, [nodeDefs, connectors, agentPresets, tools, mcpServers, flows, mcpToolCache, query, view])
 
   const flatEntries = sections.flatMap(([, entries]) => entries)
 

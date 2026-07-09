@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import type { AgentPresetDef, ConnectorDef, McpServerSummary, NodeTypeDef, ToolDef } from '../types'
+import type { AgentPresetDef, ConnectorDef, FlowPatternDef, McpServerSummary, NodeTypeDef, ToolDef } from '../types'
 import { NodePicker, type PickedNode } from './NodePicker'
 
 interface FirstStepPickerProps {
@@ -9,6 +9,7 @@ interface FirstStepPickerProps {
   agentPresets?: AgentPresetDef[]
   tools?: ToolDef[]
   mcpServers?: McpServerSummary[]
+  flows?: FlowPatternDef[]
   onPick: (picked: PickedNode) => void
 }
 
@@ -20,6 +21,7 @@ export function FirstStepPicker({
   agentPresets,
   tools,
   mcpServers,
+  flows,
   onPick,
 }: FirstStepPickerProps) {
   const [open, setOpen] = useState(false)
@@ -44,6 +46,7 @@ export function FirstStepPicker({
           agentPresets={agentPresets}
           tools={tools}
           mcpServers={mcpServers}
+          flows={flows}
           onClose={() => setOpen(false)}
           onPick={(picked) => {
             onPick(picked)
