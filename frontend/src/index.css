@@ -571,6 +571,11 @@ button.danger {
   font-size: 12px;
 }
 
+.credential-row-actions {
+  display: flex;
+  gap: 4px;
+}
+
 .oauth-connect {
   display: flex;
   align-items: center;

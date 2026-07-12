@@ -178,6 +178,7 @@ CONNECTOR_CATALOG: list[dict[str, Any]] = [
         "icon": "📧",
         "color": "#0f9d58",
         "credential_fields": [{"name": "access_token", "secret": True}],
+        "oauth_provider": "google",
         "actions": {
             "get_sheet": {
                 "description": "Fetch spreadsheet metadata",
@@ -277,8 +278,21 @@ class ConnectorActionTool(Tool):
                 f"not '{connector_type}'"
             )
 
+        # OAuth credentials: refresh the access token if it's about to expire
+        from app.oauth_providers import OAUTH_META_KEYS
+        from app.oauth_refresh import ensure_fresh
+
+        entry = await ensure_fresh(entry)
+        connector_kwargs = {
+            key: value
+            for key, value in entry.config.items()
+            if key not in OAUTH_META_KEYS
+        }
+
         connector_class = CONNECTOR_CLASSES[connector_type]
-        connector = connector_class(connector_id=f"studio-{credential_name}", **entry.config)
+        connector = connector_class(
+            connector_id=f"studio-{credential_name}", **connector_kwargs
+        )
         await connector.validate_config()
         try:
             method = getattr(connector, action)

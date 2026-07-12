@@ -35,7 +35,26 @@ OAUTH_PROVIDERS: dict[str, OAuthProviderDef] = {
         token_field="token",
         issues_refresh_tokens=False,
     ),
+    "google": OAuthProviderDef(
+        label="Google",
+        auth_url="https://accounts.google.com/o/oauth2/v2/auth",
+        token_url="https://oauth2.googleapis.com/token",
+        scopes=[
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive.readonly",
+        ],
+        connector_type="google_workspace",
+        token_field="access_token",
+        issues_refresh_tokens=True,
+        # offline: issue a refresh token; consent: re-issue it on reconnects
+        extra_auth_params={"access_type": "offline", "prompt": "consent"},
+    ),
 }
+
+# Credential config keys that are OAuth bookkeeping, not connector kwargs
+OAUTH_META_KEYS = frozenset(
+    {"auth_kind", "provider", "scopes", "refresh_token", "expires_at", "needs_reauth"}
+)
 
 # Reserved credential-store prefix for per-provider OAuth app registrations
 OAUTH_APP_PREFIX = "__oauth_app__"

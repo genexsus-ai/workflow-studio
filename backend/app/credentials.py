@@ -40,6 +40,8 @@ def safe_listing() -> list[dict]:
             "name": entry.name,
             "connector_type": entry.connector_type,
             "auth_kind": entry.config.get("auth_kind", "token"),
+            "provider": entry.config.get("provider"),
+            "needs_reauth": bool(entry.config.get("needs_reauth")),
         }
         for entry in get_credential_store().list().values()
         if not entry.name.startswith(OAUTH_APP_PREFIX)

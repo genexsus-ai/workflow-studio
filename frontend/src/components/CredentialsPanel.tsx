@@ -81,16 +81,36 @@ export function CredentialsPanel({ connectors, credentials, onChanged }: Credent
         <div key={cred.name} className="credential-row">
           <span>
             <strong>{cred.name}</strong> <em>({cred.connector_type})</em>
+            {cred.auth_kind === 'oauth2' && ' 🔗'}
+            {cred.needs_reauth && (
+              <span className="warning-text" title="Token could not be refreshed">
+                {' '}
+                ⚠
+              </span>
+            )}
           </span>
-          <button
-            className="danger"
-            onClick={async () => {
-              await api.deleteCredential(cred.name)
-              onChanged()
-            }}
-          >
-            ✕
-          </button>
+          <span className="credential-row-actions">
+            {cred.auth_kind === 'oauth2' && cred.provider && (
+              <button
+                title="Re-authorize this account"
+                onClick={async () => {
+                  const { authorize_url } = await api.startOAuth(cred.provider!, cred.name)
+                  window.open(authorize_url, '_blank', 'width=600,height=750')
+                }}
+              >
+                ↻
+              </button>
+            )}
+            <button
+              className="danger"
+              onClick={async () => {
+                await api.deleteCredential(cred.name)
+                onChanged()
+              }}
+            >
+              ✕
+            </button>
+          </span>
         </div>
       ))}
       {credentials.length === 0 && !adding && (

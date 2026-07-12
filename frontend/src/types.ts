@@ -208,6 +208,8 @@ export interface CredentialSummary {
   name: string
   connector_type: string
   auth_kind?: string
+  provider?: string | null
+  needs_reauth?: boolean
 }
 
 export interface OAuthProviderInfo {

@@ -357,7 +357,9 @@ def test_credentials_crud_and_secrecy(client):
     assert created.status_code == 201
 
     listing = client.get("/api/v1/credentials").json()
-    assert {"name": "team-slack", "connector_type": "slack", "auth_kind": "token"} in listing
+    entry = next(c for c in listing if c["name"] == "team-slack")
+    assert entry["connector_type"] == "slack"
+    assert entry["auth_kind"] == "token"
     assert "xoxb-secret" not in json.dumps(listing)  # secrets are write-only
 
     assert client.post(
