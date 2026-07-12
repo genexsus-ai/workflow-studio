@@ -31,6 +31,8 @@ const KIND_META: Record<string, { icon: string; label: string }> = {
   dataset: { icon: '🗄', label: 'Datasets' },
   sql: { icon: '🐘', label: 'Databases' },
   file: { icon: '📄', label: 'Files' },
+  gsheet: { icon: '📗', label: 'Google Sheets' },
+  duckdb: { icon: '🦆', label: 'Federated' },
 }
 
 export function DatasetsView() {
@@ -98,14 +100,20 @@ export function DatasetsView() {
                   <strong>{source.name}</strong>
                   <span>
                     {source.kind === 'sql'
-                      ? `table ${String(source.config.table ?? '')}`
+                      ? source.config.table
+                        ? `table ${String(source.config.table)}`
+                        : 'custom query'
                       : source.kind === 'file'
                         ? String(source.config.file_name ?? source.config.format ?? 'file')
-                        : `${source.rows ?? 0} rows${
-                            source.last_written_at
-                              ? ` · ${new Date(source.last_written_at).toLocaleDateString()}`
-                              : ''
-                          }`}
+                        : source.kind === 'gsheet'
+                          ? String(source.config.range ?? 'sheet')
+                          : source.kind === 'duckdb'
+                            ? 'federated query'
+                            : `${source.rows ?? 0} rows${
+                                source.last_written_at
+                                  ? ` · ${new Date(source.last_written_at).toLocaleDateString()}`
+                                  : ''
+                              }`}
                   </span>
                 </button>
               ))}
@@ -115,6 +123,7 @@ export function DatasetsView() {
       </aside>
       {adding && (
         <AddSourceDialog
+          existingSources={sources}
           onClose={() => setAdding(false)}
           onCreated={(id) => {
             setAdding(false)
@@ -136,14 +145,21 @@ export function DatasetsView() {
   )
 }
 
+function sanitizeAlias(name: string): string {
+  const alias = name.toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')
+  return /^[a-z_]/.test(alias) ? alias : `s_${alias}`
+}
+
 function AddSourceDialog({
+  existingSources,
   onClose,
   onCreated,
 }: {
+  existingSources: SourceSummary[]
   onClose: () => void
   onCreated: (id: string) => void
 }) {
-  const [mode, setMode] = useState<'sql' | 'file'>('sql')
+  const [mode, setMode] = useState<'sql' | 'file' | 'gsheet' | 'duckdb'>('sql')
   const [sqlMode, setSqlMode] = useState<'table' | 'custom'>('table')
   const [customSql, setCustomSql] = useState('')
   const [credentials, setCredentials] = useState<CredentialSummary[]>([])
@@ -159,6 +175,20 @@ function AddSourceDialog({
     sheets: string[] | null
   } | null>(null)
   const [sheet, setSheet] = useState('')
+  const [gsheetCredential, setGsheetCredential] = useState('')
+  const [spreadsheetId, setSpreadsheetId] = useState('')
+  const [sheetRange, setSheetRange] = useState('Sheet1!A1:Z1000')
+  const [federatedSql, setFederatedSql] = useState('')
+  const [federatedPicks, setFederatedPicks] = useState<Record<string, string>>({})
+  const [googleCredentials, setGoogleCredentials] = useState<CredentialSummary[]>([])
+
+  useEffect(() => {
+    listCredentials()
+      .then((all) =>
+        setGoogleCredentials(all.filter((c) => c.connector_type === 'google_workspace')),
+      )
+      .catch(() => setGoogleCredentials([]))
+  }, [])
 
   useEffect(() => {
     listCredentials()
@@ -216,6 +246,39 @@ function AddSourceDialog({
     }
   }
 
+  const submitGsheet = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const created = await createSource(name || `Sheet ${spreadsheetId.slice(0, 8)}`, 'gsheet', {
+        credential: gsheetCredential,
+        spreadsheet_id: spreadsheetId,
+        range: sheetRange,
+      })
+      onCreated(created.id)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const submitFederated = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const created = await createSource(name || 'Federated query', 'duckdb', {
+        sql: federatedSql,
+        sources: federatedPicks,
+      })
+      onCreated(created.id)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const submitFile = async () => {
     if (!uploaded) return
     setBusy(true)
@@ -242,17 +305,17 @@ function AddSourceDialog({
       <div className="add-source-dialog" onClick={(event) => event.stopPropagation()}>
         <h2>Add a data source</h2>
         <div className="add-source-tabs">
-          <button
-            className={mode === 'sql' ? 'active' : ''}
-            onClick={() => setMode('sql')}
-          >
-            🐘 Database table
+          <button className={mode === 'sql' ? 'active' : ''} onClick={() => setMode('sql')}>
+            🐘 Database
           </button>
-          <button
-            className={mode === 'file' ? 'active' : ''}
-            onClick={() => setMode('file')}
-          >
-            📄 Upload file
+          <button className={mode === 'file' ? 'active' : ''} onClick={() => setMode('file')}>
+            📄 File
+          </button>
+          <button className={mode === 'gsheet' ? 'active' : ''} onClick={() => setMode('gsheet')}>
+            📗 Sheet
+          </button>
+          <button className={mode === 'duckdb' ? 'active' : ''} onClick={() => setMode('duckdb')}>
+            🦆 Federated
           </button>
         </div>
 
@@ -362,9 +425,119 @@ function AddSourceDialog({
           </>
         )}
 
+        {mode === 'gsheet' &&
+          (googleCredentials.length === 0 ? (
+            <p className="config-subtitle">
+              No Google credentials yet — connect a Google account in the
+              Credentials panel first.
+            </p>
+          ) : (
+            <>
+              <label className="field">
+                <span>Credential</span>
+                <select
+                  value={gsheetCredential}
+                  onChange={(e) => setGsheetCredential(e.target.value)}
+                >
+                  <option value="">Choose…</option>
+                  {googleCredentials.map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Spreadsheet ID (from the sheet URL)</span>
+                <input
+                  value={spreadsheetId}
+                  placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                  onChange={(e) => setSpreadsheetId(e.target.value.trim())}
+                />
+              </label>
+              <label className="field">
+                <span>Range</span>
+                <input
+                  value={sheetRange}
+                  onChange={(e) => setSheetRange(e.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Source name</span>
+                <input value={name} onChange={(e) => setName(e.target.value)} />
+              </label>
+            </>
+          ))}
+
+        {mode === 'duckdb' && (
+          <>
+            <p className="config-subtitle">
+              Tick sources to load as tables, then join them with DuckDB SQL.
+            </p>
+            {existingSources
+              .filter((s) => s.kind !== 'duckdb')
+              .slice(0, 12)
+              .map((s) => {
+                const alias = sanitizeAlias(s.name)
+                const picked = Object.entries(federatedPicks).some(([, id]) => id === s.id)
+                return (
+                  <label key={s.id} className="field field-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={picked}
+                      onChange={(e) => {
+                        const next = { ...federatedPicks }
+                        if (e.target.checked) next[alias] = s.id
+                        else {
+                          for (const [key, value] of Object.entries(next)) {
+                            if (value === s.id) delete next[key]
+                          }
+                        }
+                        setFederatedPicks(next)
+                      }}
+                    />
+                    <span>
+                      {s.name} → <code>{alias}</code>
+                    </span>
+                  </label>
+                )
+              })}
+            <label className="field">
+              <span>DuckDB SQL (joins & window functions welcome)</span>
+              <textarea
+                rows={4}
+                value={federatedSql}
+                spellCheck={false}
+                placeholder="SELECT a.region, SUM(b.total) FROM sheet_data a JOIN orders b USING (region) GROUP BY 1"
+                onChange={(e) => setFederatedSql(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span>Source name</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} />
+            </label>
+          </>
+        )}
+
         {error && <p className="error-text">{error}</p>}
         <div className="credential-form-actions">
-          {mode === 'sql' ? (
+          {mode === 'gsheet' ? (
+            <button
+              className="primary-small"
+              disabled={busy || !gsheetCredential || !spreadsheetId || !sheetRange}
+              onClick={submitGsheet}
+            >
+              {busy ? 'Connecting…' : 'Connect'}
+            </button>
+          ) : mode === 'duckdb' ? (
+            <button
+              className="primary-small"
+              disabled={busy || !federatedSql.trim()}
+              onClick={submitFederated}
+            >
+              {busy ? 'Running…' : 'Create'}
+            </button>
+          ) : mode === 'sql' ? (
             <button
               className="primary-small"
               disabled={

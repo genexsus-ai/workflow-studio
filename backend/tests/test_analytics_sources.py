@@ -362,3 +362,147 @@ def test_materialize_rejects_non_sql_sources(client):
         json={"dataset": "copy"},
     )
     assert response.status_code == 422
+
+
+# ------------------------------------------------------------ deferred items
+
+
+def test_federated_duckdb_source_joins_across_kinds(client, tmp_path):
+    # Source 1: an internal dataset
+    _seed_dataset(
+        [
+            {"region": "east", "manager": "ana"},
+            {"region": "west", "manager": "bo"},
+        ],
+        name="regions",
+    )
+    # Source 2: a SQL table (sqlite)
+    credential = _sql_credential(client, tmp_path)
+    orders = client.post(
+        "/api/v1/analytics/sources",
+        json={
+            "name": "Orders",
+            "kind": "sql",
+            "config": {"credential": credential, "table": "orders"},
+        },
+    ).json()
+
+    created = client.post(
+        "/api/v1/analytics/sources",
+        json={
+            "name": "Revenue by manager",
+            "kind": "duckdb",
+            "config": {
+                "sql": (
+                    "SELECT r.manager, SUM(o.total) AS revenue "
+                    "FROM orders o JOIN regions r USING (region) "
+                    "GROUP BY r.manager ORDER BY revenue DESC"
+                ),
+                "sources": {"orders": orders["id"], "regions": "dataset:regions"},
+            },
+        },
+    )
+    assert created.status_code == 201, created.text
+    source_id = created.json()["id"]
+
+    rows = client.get(f"/api/v1/analytics/sources/{source_id}/rows").json()
+    assert rows["rows"] == [
+        {"manager": "ana", "revenue": 40.0},
+        {"manager": "bo", "revenue": 5.0},
+    ]
+
+    schema = client.get(f"/api/v1/analytics/sources/{source_id}/schema").json()
+    assert {"name": "revenue", "type": "number"} in schema
+
+    aggregate = client.get(
+        f"/api/v1/analytics/sources/{source_id}/aggregate?metric=max&field=revenue"
+    ).json()
+    assert aggregate[0]["value"] == 40.0
+
+
+def test_federated_validation(client):
+    no_such = client.post(
+        "/api/v1/analytics/sources",
+        json={
+            "name": "X",
+            "kind": "duckdb",
+            "config": {"sql": "SELECT * FROM t", "sources": {"t": "ghost"}},
+        },
+    )
+    assert no_such.status_code == 404
+
+    write = client.post(
+        "/api/v1/analytics/sources",
+        json={
+            "name": "X",
+            "kind": "duckdb",
+            "config": {"sql": "DROP TABLE x", "sources": {}},
+        },
+    )
+    assert write.status_code == 422
+
+
+def test_gsheet_source_with_stubbed_api(client, monkeypatch):
+    import app.analytics_sources as sources_module
+
+    client.post(
+        "/api/v1/credentials",
+        json={
+            "name": "my-google",
+            "connector_type": "google_workspace",
+            "config": {"access_token": "tok", "auth_kind": "oauth2", "provider": "google"},
+        },
+    )
+
+    def fake_fetch(credential, spreadsheet_id, range_):
+        assert credential == "my-google"
+        assert spreadsheet_id == "sheet123"
+        return [
+            ["region", "total"],
+            ["east", 40],
+            ["west", 5],
+        ]
+
+    monkeypatch.setattr(sources_module, "fetch_sheet_values", fake_fetch)
+    sources_module._sheets_cache.clear()
+
+    created = client.post(
+        "/api/v1/analytics/sources",
+        json={
+            "name": "Q2 sheet",
+            "kind": "gsheet",
+            "config": {
+                "credential": "my-google",
+                "spreadsheet_id": "sheet123",
+                "range": "Sheet1!A1:B3",
+            },
+        },
+    )
+    assert created.status_code == 201, created.text
+    source_id = created.json()["id"]
+
+    rows = client.get(f"/api/v1/analytics/sources/{source_id}/rows").json()
+    assert rows["total"] == 2
+    assert rows["rows"][0] == {"region": "east", "total": 40}
+
+    aggregate = client.get(
+        f"/api/v1/analytics/sources/{source_id}/aggregate"
+        "?metric=sum&field=total&group_by=region"
+    ).json()
+    assert {e["group"]: e["value"] for e in aggregate} == {"east": 40.0, "west": 5.0}
+
+
+def test_gsheet_requires_existing_credential(client):
+    response = client.post(
+        "/api/v1/analytics/sources",
+        json={
+            "name": "X",
+            "kind": "gsheet",
+            "config": {
+                "credential": "ghost",
+                "spreadsheet_id": "abc",
+                "range": "A1:B2",
+            },
+        },
+    )
+    assert response.status_code == 404

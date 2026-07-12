@@ -228,6 +228,13 @@ CONNECTOR_CATALOG: list[dict[str, Any]] = [
                 "description": "Fetch spreadsheet metadata",
                 "params": [{"name": "spreadsheet_id", "required": True}],
             },
+            "get_sheet_values": {
+                "description": "Read cell values from a sheet range",
+                "params": [
+                    {"name": "spreadsheet_id", "required": True},
+                    {"name": "range_", "required": True, "example": "Sheet1!A1:F100"},
+                ],
+            },
             "append_sheet_values": {
                 "description": "Append rows to a sheet",
                 "params": [

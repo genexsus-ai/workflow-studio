@@ -658,8 +658,59 @@ def create_analytics_source(payload: SourceCreate) -> dict:
             config["file_name"] = str(payload.config["file_name"])
         return get_source_registry().create(name, "file", config)
 
+    if payload.kind == "gsheet":
+        from app.analytics_sources import GSheetAdapter
+
+        credential = str(payload.config.get("credential") or "")
+        spreadsheet_id = str(payload.config.get("spreadsheet_id") or "")
+        range_ = str(payload.config.get("range") or "")
+        if not credential or not spreadsheet_id or not range_:
+            raise HTTPException(
+                status_code=422,
+                detail="config.credential, config.spreadsheet_id and config.range required",
+            )
+        try:
+            GSheetAdapter(credential, spreadsheet_id, range_)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Cannot read sheet: {exc}"
+            ) from exc
+        return get_source_registry().create(
+            name,
+            "gsheet",
+            {
+                "credential": credential,
+                "spreadsheet_id": spreadsheet_id,
+                "range": range_,
+            },
+        )
+
+    if payload.kind == "duckdb":
+        from app.analytics_sources import FederatedAdapter
+
+        sql = str(payload.config.get("sql") or "")
+        sources = payload.config.get("sources") or {}
+        if not sql or not isinstance(sources, dict):
+            raise HTTPException(
+                status_code=422,
+                detail="config.sql and config.sources (alias -> source id) required",
+            )
+        try:
+            FederatedAdapter(sql, {str(k): str(v) for k, v in sources.items()})
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Cannot run federated query: {exc}"
+            ) from exc
+        return get_source_registry().create(
+            name, "duckdb", {"sql": sql, "sources": sources}
+        )
+
     raise HTTPException(
-        status_code=422, detail="kind must be 'sql' or 'file'"
+        status_code=422, detail="kind must be 'sql', 'file', 'gsheet', or 'duckdb'"
     )
 
 

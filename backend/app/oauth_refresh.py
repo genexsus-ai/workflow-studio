@@ -58,6 +58,75 @@ async def refresh_request(
         return response.json()
 
 
+def refresh_request_sync(
+    token_url: str, refresh_token: str, app: dict[str, str]
+) -> dict[str, Any]:
+    """Synchronous refresh grant (analytics adapters run in worker threads)."""
+    import httpx
+
+    response = httpx.post(
+        token_url,
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": app["client_id"],
+            "client_secret": app["client_secret"],
+        },
+        headers={"Accept": "application/json"},
+        timeout=20.0,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def ensure_fresh_sync(entry: ConnectorConfigEntry) -> ConnectorConfigEntry:
+    """Sync twin of ensure_fresh for non-async callers (analytics sources).
+
+    No cross-call lock: a rare concurrent refresh is harmless (rotation is
+    persisted last-writer-wins and both tokens are valid briefly).
+    """
+    config = entry.config
+    if config.get("auth_kind") != "oauth2":
+        return entry
+    expires_at = config.get("expires_at")
+    if not expires_at or float(expires_at) - time.time() > EXPIRY_MARGIN_SECONDS:
+        return entry
+
+    provider_key = str(config.get("provider") or "")
+    definition = OAUTH_PROVIDERS.get(provider_key)
+    refresh_token = config.get("refresh_token")
+    app = get_oauth_app(provider_key) if definition else None
+    if definition is None or not refresh_token or not (app or {}).get("client_id"):
+        _mark_needs_reauth(entry)
+        raise CredentialNeedsReauth(entry.name, "token expired and cannot refresh")
+
+    try:
+        tokens = refresh_request_sync(definition.token_url, str(refresh_token), app)
+    except Exception as exc:
+        _mark_needs_reauth(entry)
+        raise CredentialNeedsReauth(entry.name, f"refresh rejected: {exc}") from exc
+
+    access_token = tokens.get("access_token")
+    if not access_token:
+        _mark_needs_reauth(entry)
+        raise CredentialNeedsReauth(entry.name, "provider returned no access token")
+
+    config = dict(entry.config)
+    config[definition.token_field] = access_token
+    config.pop("needs_reauth", None)
+    if tokens.get("refresh_token"):
+        config["refresh_token"] = tokens["refresh_token"]
+    if tokens.get("expires_in"):
+        config["expires_at"] = time.time() + float(tokens["expires_in"])
+    else:
+        config.pop("expires_at", None)
+    refreshed = ConnectorConfigEntry(
+        name=entry.name, connector_type=entry.connector_type, config=config
+    )
+    get_credential_store().save(refreshed)
+    return refreshed
+
+
 async def ensure_fresh(entry: ConnectorConfigEntry) -> ConnectorConfigEntry:
     """Return the entry with a usable access token, refreshing if needed.
 

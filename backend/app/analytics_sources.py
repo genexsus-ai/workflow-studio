@@ -453,6 +453,208 @@ def _infer_schema(sample: list[dict[str, Any]]) -> list[dict[str, str]]:
     return [{"name": name, "type": kind} for name, kind in types.items()]
 
 
+# ------------------------------------------------------------- google sheets
+
+_SHEETS_CACHE_TTL = 60.0
+_sheets_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+
+
+def fetch_sheet_values(
+    credential: str, spreadsheet_id: str, range_: str
+) -> list[list[Any]]:
+    """Read a values grid from the Sheets API using a stored credential."""
+    import time as _time  # noqa: F401  (kept local to ease test monkeypatching)
+
+    import httpx
+
+    from app.oauth_refresh import ensure_fresh_sync
+
+    entry = get_credential_store().get(credential)
+    if entry is None:
+        raise LookupError(f"Credential '{credential}' not found")
+    entry = ensure_fresh_sync(entry)
+    token = entry.config.get("access_token")
+    if not token:
+        raise LookupError(f"Credential '{credential}' has no access_token")
+
+    response = httpx.get(
+        f"https://www.googleapis.com/sheets/v4/spreadsheets/{spreadsheet_id}"
+        f"/values/{range_}",
+        params={"valueRenderOption": "UNFORMATTED_VALUE"},
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=20.0,
+    )
+    if response.status_code in (401, 403):
+        raise LookupError(
+            f"Google rejected credential '{credential}' — reconnect it in the "
+            "Credentials panel"
+        )
+    response.raise_for_status()
+    return response.json().get("values") or []
+
+
+def _grid_to_rows(values: list[list[Any]]) -> list[dict[str, Any]]:
+    if not values:
+        return []
+    header = [
+        str(cell) if cell not in (None, "") else f"col_{index + 1}"
+        for index, cell in enumerate(values[0])
+    ]
+    rows = []
+    for record in values[1:]:
+        rows.append(
+            {
+                header[index] if index < len(header) else f"col_{index + 1}": value
+                for index, value in enumerate(record)
+            }
+        )
+    return rows
+
+
+class GSheetAdapter:
+    """A Google Sheets range behind a stored OAuth credential."""
+
+    def __init__(self, credential: str, spreadsheet_id: str, range_: str) -> None:
+        import time
+
+        cache_key = f"{credential}:{spreadsheet_id}:{range_}"
+        cached = _sheets_cache.get(cache_key)
+        if cached and time.time() - cached[0] < _SHEETS_CACHE_TTL:
+            self.rows_data = cached[1]
+            return
+        values = fetch_sheet_values(credential, spreadsheet_id, range_)
+        self.rows_data = _grid_to_rows(values)
+        _sheets_cache[cache_key] = (time.time(), self.rows_data)
+
+    def schema(self) -> list[dict[str, str]]:
+        return _infer_schema(self.rows_data[:100])
+
+    def rows(self, limit: int, offset: int) -> dict[str, Any]:
+        return {
+            "rows": self.rows_data[offset : offset + limit],
+            "total": len(self.rows_data),
+        }
+
+    def aggregate(
+        self, metric: str, field: str | None, group_by: str | None
+    ) -> list[dict[str, Any]]:
+        return aggregate_rows(
+            self.rows_data, metric=metric, field=field, group_by=group_by
+        )
+
+
+# ----------------------------------------------------------- duckdb federation
+
+MAX_FEDERATED_ROWS_PER_SOURCE = 50_000
+
+
+def _duckdb_column_type(values: list[Any]) -> str:
+    saw_int = saw_float = saw_bool = saw_other = False
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            saw_bool = True
+        elif isinstance(value, int):
+            saw_int = True
+        elif isinstance(value, float):
+            saw_float = True
+        else:
+            saw_other = True
+    if saw_other:
+        return "VARCHAR"
+    if saw_float:
+        return "DOUBLE"
+    if saw_int:
+        return "BIGINT"
+    if saw_bool:
+        return "BOOLEAN"
+    return "VARCHAR"
+
+
+def _duckdb_load(con: Any, alias: str, rows: list[dict[str, Any]]) -> None:
+    columns: list[str] = []
+    for row in rows:
+        for key in row:
+            if not key.startswith("_") and key not in columns:
+                columns.append(key)
+    if not columns:
+        columns = ["_empty"]
+    types = {
+        column: _duckdb_column_type([row.get(column) for row in rows[:500]])
+        for column in columns
+    }
+    quoted = {column: '"' + column.replace('"', '""') + '"' for column in columns}
+    ddl = ", ".join(f"{quoted[c]} {types[c]}" for c in columns)
+    con.execute(f"CREATE TABLE {alias} ({ddl})")
+    if not rows:
+        return
+    placeholders = ", ".join("?" for _ in columns)
+
+    def _cell(column: str, value: Any) -> Any:
+        if value is None:
+            return None
+        if types[column] == "VARCHAR" and not isinstance(value, str):
+            return json.dumps(value, default=str) if isinstance(value, (dict, list)) else str(value)
+        return value
+
+    con.executemany(
+        f"INSERT INTO {alias} VALUES ({placeholders})",
+        [[_cell(column, row.get(column)) for column in columns] for row in rows],
+    )
+
+
+class FederatedAdapter:
+    """DuckDB SQL over other sources, loaded as tables named by alias.
+
+    Enables cross-source joins and window functions: each alias in
+    ``sources`` maps to an existing source id whose rows (capped) are
+    loaded into an in-memory DuckDB before the query runs.
+    """
+
+    def __init__(self, sql: str, sources: dict[str, str]) -> None:
+        import duckdb
+
+        clean_sql = validate_readonly_sql(sql)
+        con = duckdb.connect()
+        try:
+            for alias, source_id in (sources or {}).items():
+                _validate_identifier(alias, "alias")
+                source = resolve_source(str(source_id))
+                if source is None:
+                    raise LookupError(f"Source '{source_id}' (alias {alias}) not found")
+                if source["kind"] == "duckdb":
+                    raise ValueError("Federated sources cannot reference each other")
+                rows = get_adapter(source).rows(MAX_FEDERATED_ROWS_PER_SOURCE, 0)[
+                    "rows"
+                ]
+                _duckdb_load(con, alias, rows)
+            result = con.execute(clean_sql)
+            columns = [description[0] for description in result.description]
+            self.rows_data = [
+                {column: value for column, value in zip(columns, record)}
+                for record in result.fetchall()
+            ]
+        finally:
+            con.close()
+
+    def schema(self) -> list[dict[str, str]]:
+        return _infer_schema(self.rows_data[:100])
+
+    def rows(self, limit: int, offset: int) -> dict[str, Any]:
+        return {
+            "rows": self.rows_data[offset : offset + limit],
+            "total": len(self.rows_data),
+        }
+
+    def aggregate(
+        self, metric: str, field: str | None, group_by: str | None
+    ) -> list[dict[str, Any]]:
+        return aggregate_rows(
+            self.rows_data, metric=metric, field=field, group_by=group_by
+        )
+
+
 # ----------------------------------------------------------------- dispatch
 
 
@@ -486,7 +688,7 @@ def resolve_source(source_id: str) -> dict[str, Any] | None:
 
 def get_adapter(
     source: dict[str, Any],
-) -> DatasetAdapter | SQLAdapter | FileAdapter:
+) -> "DatasetAdapter | SQLAdapter | FileAdapter | GSheetAdapter | FederatedAdapter":
     kind = source["kind"]
     config = source["config"]
     if kind == "dataset":
@@ -501,6 +703,12 @@ def get_adapter(
         return FileAdapter(
             config["file_id"], config.get("format", "xlsx"), config.get("sheet")
         )
+    if kind == "gsheet":
+        return GSheetAdapter(
+            config["credential"], config["spreadsheet_id"], config["range"]
+        )
+    if kind == "duckdb":
+        return FederatedAdapter(config["sql"], config.get("sources") or {})
     raise ValueError(f"Unknown source kind '{kind}'")
 
 
