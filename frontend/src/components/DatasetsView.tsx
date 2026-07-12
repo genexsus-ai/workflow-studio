@@ -11,6 +11,7 @@ import {
   listCredentialTables,
   listCredentials,
   listSources,
+  materializeSource,
   uploadFile,
 } from '../api'
 import type {
@@ -143,6 +144,8 @@ function AddSourceDialog({
   onCreated: (id: string) => void
 }) {
   const [mode, setMode] = useState<'sql' | 'file'>('sql')
+  const [sqlMode, setSqlMode] = useState<'table' | 'custom'>('table')
+  const [customSql, setCustomSql] = useState('')
   const [credentials, setCredentials] = useState<CredentialSummary[]>([])
   const [credential, setCredential] = useState('')
   const [tables, setTables] = useState<string[] | null>(null)
@@ -179,10 +182,16 @@ function AddSourceDialog({
     setBusy(true)
     setError(null)
     try {
-      const created = await createSource(name || `${table} (${credential})`, 'sql', {
-        credential,
-        table,
-      })
+      const config: Record<string, unknown> = { credential }
+      let fallbackName: string
+      if (sqlMode === 'custom') {
+        config.sql = customSql
+        fallbackName = `Query (${credential})`
+      } else {
+        config.table = table
+        fallbackName = `${table} (${credential})`
+      }
+      const created = await createSource(name || fallbackName, 'sql', config)
       onCreated(created.id)
     } catch (err) {
       setError((err as Error).message)
@@ -266,7 +275,29 @@ function AddSourceDialog({
                   ))}
                 </select>
               </label>
-              {tables && (
+              {credential && (
+                <label className="field field-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={sqlMode === 'custom'}
+                    onChange={(e) => setSqlMode(e.target.checked ? 'custom' : 'table')}
+                  />
+                  <span>Custom SQL query (read-only)</span>
+                </label>
+              )}
+              {sqlMode === 'custom' && credential && (
+                <label className="field">
+                  <span>SELECT query</span>
+                  <textarea
+                    rows={4}
+                    value={customSql}
+                    spellCheck={false}
+                    placeholder="SELECT region, SUM(total) AS revenue FROM orders GROUP BY region"
+                    onChange={(e) => setCustomSql(e.target.value)}
+                  />
+                </label>
+              )}
+              {sqlMode === 'table' && tables && (
                 <label className="field">
                   <span>Table</span>
                   <select value={table} onChange={(e) => setTable(e.target.value)}>
@@ -279,12 +310,12 @@ function AddSourceDialog({
                   </select>
                 </label>
               )}
-              {table && (
+              {(table || (sqlMode === 'custom' && customSql)) && (
                 <label className="field">
                   <span>Source name</span>
                   <input
                     value={name}
-                    placeholder={`${table} (${credential})`}
+                    placeholder={sqlMode === 'custom' ? `Query (${credential})` : `${table} (${credential})`}
                     onChange={(e) => setName(e.target.value)}
                   />
                 </label>
@@ -336,7 +367,11 @@ function AddSourceDialog({
           {mode === 'sql' ? (
             <button
               className="primary-small"
-              disabled={busy || !credential || !table}
+              disabled={
+                busy ||
+                !credential ||
+                (sqlMode === 'table' ? !table : !customSql.trim())
+              }
               onClick={submitSql}
             >
               {busy ? 'Connecting…' : 'Connect'}
@@ -438,6 +473,7 @@ function SourceDetail({
       {error && <p className="error-text">{error}</p>}
 
       <ChartBuilder sourceId={source.id} columns={columns} numericColumns={numericColumns} />
+      {source.kind === 'sql' && <MaterializeSection source={source} />}
       <AnalyzeSection sourceId={source.id} />
 
       <section className="insights-card">
@@ -592,6 +628,80 @@ function ChartBuilder({
             </div>
           ))}
         </div>
+      )}
+    </section>
+  )
+}
+
+function MaterializeSection({ source }: { source: SourceSummary }) {
+  const [open, setOpen] = useState(false)
+  const [dataset, setDataset] = useState('')
+  const [mode, setMode] = useState('replace')
+  const [interval, setInterval] = useState(3600)
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const created = await materializeSource(source.id, dataset, mode, interval)
+      setResult(
+        `Workflow "${created.workflow_name}" created and scheduled — the dataset will appear after its first run.`,
+      )
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="insights-card">
+      <h2>Sync to dataset</h2>
+      {!open ? (
+        <>
+          <p className="config-subtitle">
+            Generate a scheduled workflow that copies this source into a durable
+            dataset — history, transforms, and agents can build on it.
+          </p>
+          <button onClick={() => setOpen(true)}>⟳ Set up sync…</button>
+        </>
+      ) : result ? (
+        <p className="config-subtitle">✓ {result}</p>
+      ) : (
+        <>
+          <div className="insights-filters chart-builder-filters">
+            <label>
+              Dataset{' '}
+              <input
+                value={dataset}
+                placeholder="e.g. orders_snapshot"
+                onChange={(e) => setDataset(e.target.value)}
+              />
+            </label>
+            <label>
+              Mode{' '}
+              <select value={mode} onChange={(e) => setMode(e.target.value)}>
+                <option value="replace">replace (mirror)</option>
+                <option value="append">append (history)</option>
+              </select>
+            </label>
+            <label>
+              Every{' '}
+              <select value={interval} onChange={(e) => setInterval(Number(e.target.value))}>
+                <option value={900}>15 min</option>
+                <option value={3600}>hour</option>
+                <option value={86400}>day</option>
+              </select>
+            </label>
+            <button className="primary-small" disabled={busy || !dataset.trim()} onClick={submit}>
+              {busy ? 'Creating…' : 'Create sync workflow'}
+            </button>
+          </div>
+          {error && <p className="error-text">{error}</p>}
+        </>
       )}
     </section>
   )

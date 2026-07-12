@@ -165,10 +165,27 @@ class DatasetAdapter:
         )
 
 
-class SQLAdapter:
-    """A table behind a stored credential; aggregation pushed down as SQL."""
+def validate_readonly_sql(sql: str) -> str:
+    """Accept only single SELECT/WITH statements for analytics sources."""
+    cleaned = (sql or "").strip().rstrip(";")
+    first_word = cleaned.split(None, 1)
+    if not first_word or first_word[0].lower() not in ("select", "with"):
+        raise ValueError("Custom SQL must be a SELECT/WITH query")
+    if ";" in cleaned:
+        raise ValueError("Custom SQL must be a single statement")
+    return cleaned
 
-    def __init__(self, credential: str, table: str) -> None:
+
+class SQLAdapter:
+    """A table (or read-only custom query) behind a stored credential.
+
+    Aggregation is pushed down as SQL; custom queries are wrapped as a
+    subquery so paging and GROUP BY run in the database either way.
+    """
+
+    def __init__(
+        self, credential: str, table: str | None = None, sql: str | None = None
+    ) -> None:
         entry = get_credential_store().get(credential)
         if entry is None:
             raise LookupError(f"Credential '{credential}' not found")
@@ -178,7 +195,15 @@ class SQLAdapter:
                 f"Credential '{credential}' has no connection_string"
             )
         self.connection_string = str(connection_string)
-        self.table = _validate_identifier(table, "table")
+        if bool(table) == bool(sql):
+            raise ValueError("Provide exactly one of table / sql")
+        self.table = _validate_identifier(table, "table") if table else None
+        self.sql = validate_readonly_sql(sql) if sql else None
+
+    @property
+    def _relation(self) -> str:
+        """What goes after FROM: the table name or the wrapped query."""
+        return self.table if self.table else f"({self.sql}) AS _q"
 
     def _engine(self) -> Any:
         from sqlalchemy import create_engine
@@ -186,17 +211,35 @@ class SQLAdapter:
         return create_engine(self.connection_string, pool_pre_ping=True)
 
     def schema(self) -> list[dict[str, str]]:
-        from sqlalchemy import inspect
+        from sqlalchemy import inspect, text
 
         engine = self._engine()
         try:
-            columns = inspect(engine).get_columns(self.table)
+            if self.table:
+                columns = inspect(engine).get_columns(self.table)
+                return [
+                    {"name": column["name"], "type": str(column["type"]).lower()}
+                    for column in columns
+                ]
+            with engine.connect() as conn:
+                result = conn.execute(
+                    text(f"SELECT * FROM {self._relation} LIMIT 25")  # noqa: S608
+                )
+                columns_names = list(result.keys())
+                sample = [
+                    {column: value for column, value in zip(columns_names, row)}
+                    for row in result.fetchall()
+                ]
+            inferred = _infer_schema(sample)
+            known = {entry["name"] for entry in inferred}
+            inferred.extend(
+                {"name": name, "type": "string"}
+                for name in columns_names
+                if name not in known
+            )
+            return inferred
         finally:
             engine.dispose()
-        return [
-            {"name": column["name"], "type": str(column["type"]).lower()}
-            for column in columns
-        ]
 
     def rows(self, limit: int, offset: int) -> dict[str, Any]:
         from sqlalchemy import text
@@ -205,11 +248,11 @@ class SQLAdapter:
         try:
             with engine.connect() as conn:
                 total = conn.execute(
-                    text(f"SELECT COUNT(*) FROM {self.table}")  # noqa: S608 — validated identifier
+                    text(f"SELECT COUNT(*) FROM {self._relation}")  # noqa: S608
                 ).scalar()
                 result = conn.execute(
                     text(
-                        f"SELECT * FROM {self.table} LIMIT :limit OFFSET :offset"  # noqa: S608
+                        f"SELECT * FROM {self._relation} LIMIT :limit OFFSET :offset"  # noqa: S608
                     ),
                     {"limit": min(limit, MAX_SQL_ROWS), "offset": offset},
                 )
@@ -242,7 +285,7 @@ class SQLAdapter:
                     _validate_identifier(group_by, "column")
                     statement = (
                         f"SELECT {group_by} AS grp, {agg_sql} AS value, "  # noqa: S608
-                        f"COUNT(*) AS rows_in_group FROM {self.table} "
+                        f"COUNT(*) AS rows_in_group FROM {self._relation} "
                         f"GROUP BY {group_by} ORDER BY value DESC LIMIT {MAX_GROUPS}"
                     )
                     result = conn.execute(text(statement))
@@ -255,7 +298,7 @@ class SQLAdapter:
                         for grp, value, count in result.fetchall()
                     ]
                 statement = (
-                    f"SELECT {agg_sql} AS value, COUNT(*) AS n FROM {self.table}"  # noqa: S608
+                    f"SELECT {agg_sql} AS value, COUNT(*) AS n FROM {self._relation}"  # noqa: S608
                 )
                 value, count = conn.execute(text(statement)).fetchone()
                 return [
@@ -449,7 +492,11 @@ def get_adapter(
     if kind == "dataset":
         return DatasetAdapter(config["dataset"])
     if kind == "sql":
-        return SQLAdapter(config["credential"], config["table"])
+        return SQLAdapter(
+            config["credential"],
+            table=config.get("table"),
+            sql=config.get("sql"),
+        )
     if kind == "file":
         return FileAdapter(
             config["file_id"], config.get("format", "xlsx"), config.get("sheet")

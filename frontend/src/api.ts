@@ -272,6 +272,18 @@ export const analyzeSource = (id: string, question?: string) =>
     body: JSON.stringify({ question: question || null }),
   }).then((r) => json<DatasetAnalysis>(r))
 
+export const materializeSource = (
+  id: string,
+  dataset: string,
+  mode: string,
+  intervalSeconds: number,
+) =>
+  fetch(`${API}/analytics/sources/${id}/materialize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dataset, mode, interval_seconds: intervalSeconds }),
+  }).then((r) => json<{ workflow_id: string; workflow_name: string }>(r))
+
 export const uploadFile = (file: File) => {
   const form = new FormData()
   form.append('file', file)

@@ -244,3 +244,121 @@ def test_file_source_validation(client):
         json={"name": "X", "kind": "file", "config": {"file_id": "a" * 64, "format": "pdf"}},
     )
     assert bad_format.status_code == 422
+
+
+# ------------------------------------------------------------------------ P3
+
+
+def test_custom_sql_source(client, tmp_path):
+    credential = _sql_credential(client, tmp_path)
+
+    created = client.post(
+        "/api/v1/analytics/sources",
+        json={
+            "name": "Revenue by region",
+            "kind": "sql",
+            "config": {
+                "credential": credential,
+                "sql": "SELECT region, SUM(total) AS revenue FROM orders GROUP BY region",
+            },
+        },
+    )
+    assert created.status_code == 201
+    source_id = created.json()["id"]
+
+    rows = client.get(f"/api/v1/analytics/sources/{source_id}/rows").json()
+    assert rows["total"] == 2
+    revenue = {r["region"]: r["revenue"] for r in rows["rows"]}
+    assert revenue == {"east": 40.0, "west": 5.0}
+
+    # Aggregation over the wrapped query
+    aggregate = client.get(
+        f"/api/v1/analytics/sources/{source_id}/aggregate?metric=max&field=revenue"
+    ).json()
+    assert aggregate[0]["value"] == 40.0
+
+    schema = client.get(f"/api/v1/analytics/sources/{source_id}/schema").json()
+    assert {c["name"] for c in schema} == {"region", "revenue"}
+
+
+def test_custom_sql_rejects_writes_and_multi_statements(client, tmp_path):
+    credential = _sql_credential(client, tmp_path)
+
+    for bad_sql in ("DELETE FROM orders", "SELECT 1; DROP TABLE orders"):
+        response = client.post(
+            "/api/v1/analytics/sources",
+            json={
+                "name": "X",
+                "kind": "sql",
+                "config": {"credential": credential, "sql": bad_sql},
+            },
+        )
+        assert response.status_code == 422, bad_sql
+
+    both = client.post(
+        "/api/v1/analytics/sources",
+        json={
+            "name": "X",
+            "kind": "sql",
+            "config": {"credential": credential, "table": "orders", "sql": "SELECT 1"},
+        },
+    )
+    assert both.status_code == 422
+
+
+def test_materialize_generates_scheduled_sync_workflow(client, tmp_path):
+    import time
+
+    credential = _sql_credential(client, tmp_path)
+    created = client.post(
+        "/api/v1/analytics/sources",
+        json={
+            "name": "Orders",
+            "kind": "sql",
+            "config": {"credential": credential, "table": "orders"},
+        },
+    ).json()
+
+    materialized = client.post(
+        f"/api/v1/analytics/sources/{created['id']}/materialize",
+        json={"dataset": "orders_snapshot", "mode": "replace", "interval_seconds": 3600},
+    )
+    assert materialized.status_code == 201
+    workflow_id = materialized.json()["workflow_id"]
+
+    doc = client.get(f"/api/v1/workflows/{workflow_id}").json()
+    assert doc["automation"]["schedule_enabled"] is True
+    assert doc["automation"]["interval_seconds"] == 3600
+    node_types = [node["type"] for node in doc["nodes"]]
+    assert node_types == ["trigger", "connector", "tool", "output"]
+
+    # Run the generated workflow now (via webhook) and verify the dataset fills
+    enabled = client.post(
+        f"/api/v1/workflows/{workflow_id}/automation",
+        json={
+            "webhook_enabled": True,
+            "schedule_enabled": False,
+            "interval_seconds": 3600,
+        },
+    ).json()
+    run_id = client.post(
+        f"/api/v1/hooks/{enabled['automation']['webhook_token']}", json={}
+    ).json()["run_id"]
+    for _ in range(100):
+        record = client.get(f"/api/v1/runs/{run_id}").json()
+        if record["status"] not in ("queued", "running"):
+            break
+        time.sleep(0.05)
+    assert record["status"] == "success", record.get("error")
+
+    snapshot = client.get("/api/v1/datasets/orders_snapshot/rows").json()
+    assert snapshot["total"] == 3
+
+
+def test_materialize_rejects_non_sql_sources(client):
+    _seed_dataset([{"a": 1}])
+    response = client.post(
+        "/api/v1/analytics/sources/dataset:events/materialize",
+        json={"dataset": "copy"},
+    )
+    assert response.status_code == 422

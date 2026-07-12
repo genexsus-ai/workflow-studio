@@ -109,8 +109,15 @@ class DatasetAnalyzeRequest(BaseModel):
 
 class SourceCreate(BaseModel):
     name: str
-    kind: str  # "sql" (P1); "file" arrives in P2
+    kind: str  # "sql" | "file"
     config: dict[str, Any] = Field(default_factory=dict)
+
+
+class MaterializeRequest(BaseModel):
+    dataset: str
+    mode: str = "replace"  # replace: dataset mirrors the source; append: history
+    interval_seconds: int = 3600
+    cron: str | None = None
 
 
 class OAuthAppConfig(BaseModel):
