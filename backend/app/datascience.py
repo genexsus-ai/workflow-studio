@@ -378,3 +378,44 @@ def rerun_cell(analysis: dict[str, Any], cell: dict[str, Any]) -> dict[str, Any]
     except Exception as exc:
         cell.update(status="error", error=str(exc), ran_at=_now())
     return cell
+
+
+MAX_MATERIALIZE_ROWS = 100_000
+
+
+def materialize_cell(
+    analysis: dict[str, Any],
+    cell: dict[str, Any],
+    dataset: str,
+    mode: str = "replace",
+) -> dict[str, Any]:
+    """Write a cell's full (re-executed) result into a durable dataset."""
+    from genxai.core.datasets import get_dataset_store
+
+    if not cell.get("sql"):
+        raise ValueError("Cell has no SQL to materialize")
+    if mode not in ("replace", "append"):
+        raise ValueError("mode must be replace or append")
+
+    adapter = FederatedAdapter(
+        validate_readonly_sql(cell["sql"]), analysis["sources"]
+    )
+    rows = adapter.rows_data[:MAX_MATERIALIZE_ROWS]
+    store = get_dataset_store()
+    if mode == "replace":
+        written = store.replace(dataset, rows)
+    else:
+        written = store.append(dataset, rows)
+    return {
+        "dataset": dataset,
+        "written": written,
+        "total_rows": store.rows(dataset, limit=1)["total"],
+    }
+
+
+def rerun_all(analysis: dict[str, Any]) -> dict[str, Any]:
+    """Re-execute every cell that has SQL, in order; returns the analysis."""
+    for cell in analysis["cells"]:
+        if cell.get("sql"):
+            rerun_cell(analysis, cell)
+    return analysis

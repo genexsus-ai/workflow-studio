@@ -195,3 +195,80 @@ def test_cells_require_bound_sources(client):
         json={"sql": "SELECT 1"},
     )
     assert response.status_code == 422
+
+
+# ------------------------------------------------------------------------ P2
+
+
+def test_rerun_all_refreshes_every_cell(client):
+    _seed_dataset([{"total": 10}])
+    analysis = _analysis(client, {"orders": "dataset:orders"})
+    for sql in ("SELECT COUNT(*) AS n FROM orders", "SELECT SUM(total) AS s FROM orders"):
+        client.post(
+            f"/api/v1/datascience/analyses/{analysis['id']}/cells/manual",
+            json={"sql": sql},
+        )
+
+    _seed_dataset([{"total": 90}])  # data changes
+    refreshed = client.post(
+        f"/api/v1/datascience/analyses/{analysis['id']}/rerun"
+    ).json()
+
+    assert refreshed["cells"][0]["result_rows"] == [{"n": 2}]
+    assert refreshed["cells"][1]["result_rows"] == [{"s": 100.0}]
+
+
+def test_materialize_cell_creates_dataset(client):
+    _seed_dataset(
+        [{"region": "east", "total": 10}, {"region": "east", "total": 30},
+         {"region": "west", "total": 5}]
+    )
+    analysis = _analysis(client, {"orders": "dataset:orders"})
+    cell = client.post(
+        f"/api/v1/datascience/analyses/{analysis['id']}/cells/manual",
+        json={"sql": "SELECT region, SUM(total) AS revenue FROM orders GROUP BY region"},
+    ).json()
+
+    result = client.post(
+        f"/api/v1/datascience/analyses/{analysis['id']}/cells/{cell['id']}/materialize",
+        json={"dataset": "revenue_by_region", "mode": "replace"},
+    )
+    assert result.status_code == 201
+    assert result.json()["written"] == 2
+
+    # The materialized cell is now a first-class dataset (and catalog source)
+    rows = client.get("/api/v1/datasets/revenue_by_region/rows").json()
+    assert rows["total"] == 2
+    revenue = {r["region"]: r["revenue"] for r in rows["rows"]}
+    assert revenue == {"east": 40.0, "west": 5.0}
+
+    sources = client.get("/api/v1/data/sources").json()
+    assert any(s["id"] == "dataset:revenue_by_region" for s in sources)
+
+    # replace mode keeps it a mirror on re-materialize
+    client.post(
+        f"/api/v1/datascience/analyses/{analysis['id']}/cells/{cell['id']}/materialize",
+        json={"dataset": "revenue_by_region", "mode": "replace"},
+    )
+    assert client.get("/api/v1/datasets/revenue_by_region/rows").json()["total"] == 2
+
+
+def test_materialize_validation(client):
+    _seed_dataset([{"a": 1}])
+    analysis = _analysis(client, {"orders": "dataset:orders"})
+    cell = client.post(
+        f"/api/v1/datascience/analyses/{analysis['id']}/cells/manual",
+        json={"sql": "SELECT 1 AS x"},
+    ).json()
+
+    bad_name = client.post(
+        f"/api/v1/datascience/analyses/{analysis['id']}/cells/{cell['id']}/materialize",
+        json={"dataset": "../evil", "mode": "replace"},
+    )
+    assert bad_name.status_code == 422
+
+    bad_mode = client.post(
+        f"/api/v1/datascience/analyses/{analysis['id']}/cells/{cell['id']}/materialize",
+        json={"dataset": "ok_name", "mode": "upsert"},
+    )
+    assert bad_mode.status_code == 422

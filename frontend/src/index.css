@@ -609,6 +609,16 @@ body {
   white-space: pre-wrap;
 }
 
+.cell-chart {
+  margin: 8px 0;
+}
+
+.cell-chart svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
 .cell-sql-input {
   width: 100%;
   font-family: ui-monospace, monospace;

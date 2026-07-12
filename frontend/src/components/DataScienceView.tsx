@@ -9,8 +9,11 @@ import {
   getAnalysis,
   listAnalyses,
   listSources,
+  materializeCell,
+  rerunAllCells,
   rerunAnalysisCell,
   updateAnalysis,
+  updateAnalysisCell,
 } from '../api'
 import type { Analysis, AnalysisCell, AnalysisSummary, SourceSummary } from '../types'
 
@@ -170,16 +173,34 @@ function AnalysisDetail({
     <div className="dataset-detail">
       <div className="dataset-detail-header">
         <h2>{analysis.name}</h2>
-        <button
-          className="danger"
-          title="Delete this analysis"
-          onClick={async () => {
-            await deleteAnalysis(analysisId)
-            onDeleted()
-          }}
-        >
-          🗑
-        </button>
+        <span className="credential-row-actions">
+          {analysis.cells.length > 0 && (
+            <button
+              disabled={busy}
+              title="Re-run every cell against current data"
+              onClick={async () => {
+                setBusy(true)
+                try {
+                  setAnalysis(await rerunAllCells(analysisId))
+                } finally {
+                  setBusy(false)
+                }
+              }}
+            >
+              ↻ Rerun all
+            </button>
+          )}
+          <button
+            className="danger"
+            title="Delete this analysis"
+            onClick={async () => {
+              await deleteAnalysis(analysisId)
+              onDeleted()
+            }}
+          >
+            🗑
+          </button>
+        </span>
       </div>
 
       <section className="insights-card">
@@ -271,6 +292,85 @@ function AnalysisDetail({
   )
 }
 
+// Sequential blue for single-measure charts (validated on the app surface)
+const CHART_BLUE = '#2a78d6'
+
+function CellChart({ cell }: { cell: AnalysisCell }) {
+  const chart = cell.chart
+  const rows = cell.result_rows ?? []
+  if (!chart || rows.length === 0) return null
+  const points = rows
+    .map((row) => ({ x: String(row[chart.x] ?? '—'), y: Number(row[chart.y]) }))
+    .filter((p) => Number.isFinite(p.y))
+    .slice(0, 30)
+  if (points.length === 0) return null
+
+  if (chart.type === 'bar') {
+    const max = Math.max(1, ...points.map((p) => Math.abs(p.y)))
+    return (
+      <div className="trigger-bars cell-chart">
+        {points.slice(0, 12).map((p) => (
+          <div key={p.x} className="trigger-bar-row">
+            <span className="trigger-bar-label truncate">{p.x}</span>
+            <div className="trigger-bar-track">
+              <div
+                className="trigger-bar-fill"
+                style={{
+                  width: `${Math.max((Math.abs(p.y) / max) * 100, 2)}%`,
+                  background: CHART_BLUE,
+                }}
+              />
+            </div>
+            <span className="trigger-bar-value">
+              {Number.isInteger(p.y) ? p.y : p.y.toFixed(2)}
+            </span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  // line: values in row order over an ordered x column
+  const width = 560
+  const height = 120
+  const values = points.map((p) => p.y)
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const span = max - min || 1
+  const step = width / Math.max(points.length - 1, 1)
+  const coords = points.map((p, i) => ({
+    cx: i * step,
+    cy: 8 + (1 - (p.y - min) / span) * (height - 30),
+    label: p.x,
+  }))
+  return (
+    <div className="cell-chart">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${chart.y} over ${chart.x}`}>
+        <line x1={0} y1={height - 16} x2={width} y2={height - 16} stroke="#e2e8f0" />
+        <polyline
+          fill="none"
+          stroke={CHART_BLUE}
+          strokeWidth={2}
+          points={coords.map((c) => `${c.cx},${c.cy}`).join(' ')}
+        />
+        {coords.map((c, i) => (
+          <g key={i}>
+            <circle cx={c.cx} cy={c.cy} r={3} fill={CHART_BLUE} />
+            {(points.length <= 8 || i % Math.ceil(points.length / 8) === 0) && (
+              <text x={c.cx} y={height - 4} textAnchor="middle" className="chart-tick">
+                {c.label.slice(0, 10)}
+              </text>
+            )}
+          </g>
+        ))}
+      </svg>
+      <p className="config-subtitle">
+        {cell.chart?.y} by {cell.chart?.x}
+      </p>
+    </div>
+  )
+}
+
 function CellCard({
   analysisId,
   cell,
@@ -281,6 +381,11 @@ function CellCard({
   onChanged: () => void
 }) {
   const [busy, setBusy] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [sqlDraft, setSqlDraft] = useState(cell.sql ?? '')
+  const [saving, setSaving] = useState<string | null>(null)
+  const [datasetName, setDatasetName] = useState('')
+  const [savingToDataset, setSavingToDataset] = useState(false)
 
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true)
@@ -305,6 +410,23 @@ function CellCard({
             ↻
           </button>
           <button
+            disabled={busy}
+            title="Save this result as a dataset"
+            onClick={() => setSavingToDataset((open) => !open)}
+          >
+            →🗄
+          </button>
+          <button
+            disabled={busy}
+            title="Edit the SQL"
+            onClick={() => {
+              setSqlDraft(cell.sql ?? '')
+              setEditing((open) => !open)
+            }}
+          >
+            ✎
+          </button>
+          <button
             className="danger"
             disabled={busy}
             title="Delete cell"
@@ -315,10 +437,68 @@ function CellCard({
         </span>
       </div>
 
+      {savingToDataset && (
+        <div className="insights-filters">
+          <input
+            className="analyze-question"
+            value={datasetName}
+            placeholder="dataset name, e.g. revenue_by_region"
+            onChange={(e) => setDatasetName(e.target.value)}
+          />
+          <button
+            className="primary-small"
+            disabled={busy || !datasetName.trim()}
+            onClick={() =>
+              void act(async () => {
+                const result = await materializeCell(
+                  analysisId,
+                  cell.id,
+                  datasetName.trim(),
+                  'replace',
+                )
+                setSaving(`Saved ${result.written} rows to dataset "${result.dataset}"`)
+                setSavingToDataset(false)
+              })
+            }
+          >
+            Save
+          </button>
+        </div>
+      )}
+      {saving && <p className="config-subtitle">✓ {saving}</p>}
+
+      {editing && (
+        <div>
+          <textarea
+            className="cell-sql-input"
+            rows={3}
+            value={sqlDraft}
+            spellCheck={false}
+            onChange={(e) => setSqlDraft(e.target.value)}
+          />
+          <div className="credential-form-actions">
+            <button
+              className="primary-small"
+              disabled={busy || !sqlDraft.trim()}
+              onClick={() =>
+                void act(async () => {
+                  await updateAnalysisCell(analysisId, cell.id, { sql: sqlDraft })
+                  setEditing(false)
+                })
+              }
+            >
+              Save & run
+            </button>
+            <button onClick={() => setEditing(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
       {cell.status === 'error' ? (
         <p className="error-text">{cell.error}</p>
       ) : (
         <>
+          <CellChart cell={cell} />
           {cell.result_rows && cell.result_rows.length > 0 && (
             <div className="dataset-table-wrap">
               <table className="insights-table">
@@ -350,7 +530,7 @@ function CellCard({
         </>
       )}
 
-      {cell.sql && (
+      {cell.sql && !editing && (
         <details className="output-paths">
           <summary>SQL</summary>
           <pre className="cell-sql">{cell.sql}</pre>

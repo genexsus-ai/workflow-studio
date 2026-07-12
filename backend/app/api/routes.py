@@ -1495,3 +1495,37 @@ def delete_analysis_cell(analysis_id: str, cell_id: str) -> None:
     if len(analysis["cells"]) == before:
         raise HTTPException(status_code=404, detail="Cell not found")
     get_analysis_store().save(analysis)
+
+
+@router.post("/datascience/analyses/{analysis_id}/rerun")
+def rerun_all_cells(analysis_id: str) -> dict:
+    """Re-execute every cell against current data (the living-report refresh)."""
+    from app.datascience import get_analysis_store, rerun_all
+
+    analysis = _get_analysis_or_404(analysis_id)
+    rerun_all(analysis)
+    get_analysis_store().save(analysis)
+    return analysis
+
+
+@router.post(
+    "/datascience/analyses/{analysis_id}/cells/{cell_id}/materialize",
+    status_code=201,
+)
+def materialize_analysis_cell(
+    analysis_id: str, cell_id: str, payload: MaterializeRequest
+) -> dict:
+    """Persist a cell's result as a durable dataset (feature table pattern)."""
+    from app.datascience import get_analysis_store, materialize_cell
+    from genxai.core.datasets import _validate_name
+
+    analysis = _get_analysis_or_404(analysis_id)
+    cell = _find_cell_or_404(analysis, cell_id)
+    dataset = payload.dataset.strip()
+    try:
+        _validate_name(dataset)
+        result = materialize_cell(analysis, cell, dataset, payload.mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    get_analysis_store().save(analysis)
+    return result

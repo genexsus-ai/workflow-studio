@@ -278,6 +278,29 @@ export const addManualCell = (id: string, sql: string, question?: string) =>
     body: JSON.stringify({ sql, question: question ?? null }),
   }).then((r) => json<AnalysisCell>(r))
 
+export const rerunAllCells = (id: string) =>
+  fetch(`${API}/datascience/analyses/${id}/rerun`, { method: 'POST' }).then((r) =>
+    json<Analysis>(r),
+  )
+
+export const updateAnalysisCell = (
+  id: string,
+  cellId: string,
+  patch: { sql?: string; question?: string },
+) =>
+  fetch(`${API}/datascience/analyses/${id}/cells/${cellId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  }).then((r) => json<AnalysisCell>(r))
+
+export const materializeCell = (id: string, cellId: string, dataset: string, mode: string) =>
+  fetch(`${API}/datascience/analyses/${id}/cells/${cellId}/materialize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dataset, mode }),
+  }).then((r) => json<{ dataset: string; written: number; total_rows: number }>(r))
+
 export const rerunAnalysisCell = (id: string, cellId: string) =>
   fetch(`${API}/datascience/analyses/${id}/cells/${cellId}/rerun`, {
     method: 'POST',
