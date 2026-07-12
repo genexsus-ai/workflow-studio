@@ -49,3 +49,38 @@ def test_file_tools_registered_in_palette(client):
     palette = client.get("/api/v1/palette").json()
     tool_names = {tool["name"] for tool in palette["tools"]}
     assert {"file_download", "file_write", "file_content"} <= tool_names
+
+
+def test_excel_tools_registered_and_roundtrip(client):
+    palette = client.get("/api/v1/palette").json()
+    tool_names = {tool["name"] for tool in palette["tools"]}
+    assert {"excel_read", "excel_write"} <= tool_names
+
+    doc = {
+        "name": "Excel flow",
+        "nodes": [
+            {"id": "start", "type": "input", "position": {"x": 0, "y": 0}, "config": {}},
+            {
+                "id": "write",
+                "type": "tool",
+                "position": {"x": 100, "y": 0},
+                "config": {
+                    "tool_name": "excel_write",
+                    "tool_params": {"rows": "{{ input.rows }}", "name": "out.xlsx"},
+                },
+            },
+        ],
+        "edges": [{"source": "start", "target": "write"}],
+    }
+    created = client.post("/api/v1/workflows", json=doc).json()
+    result = client.post(
+        f"/api/v1/workflows/{created['id']}/test-node",
+        json={"node_id": "write", "input": {"rows": [{"a": 1}, {"a": 2}]}},
+    ).json()
+
+    assert result["status"] == "success"
+    ref = result["output"]["data"]["file"]
+    download = client.get(f"/api/v1/files/{ref['id']}")
+    assert download.status_code == 200
+    assert download.content[:2] == b"PK"
+    assert "out.xlsx" in download.headers.get("content-disposition", "")

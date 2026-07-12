@@ -30,6 +30,7 @@ def register_studio_tools() -> int:
     from genxai.tools.builtin.data.text_analyzer import TextAnalyzerTool
     from genxai.tools.builtin.data.xml_processor import XMLProcessorTool
     from genxai.tools.builtin.file.directory_scanner import DirectoryScannerTool
+    from genxai.tools.builtin.file.excel_tools import ExcelReadTool, ExcelWriteTool
     from genxai.tools.builtin.file.file_reader import FileReaderTool
     from genxai.tools.builtin.file.file_store_tools import (
         FileContentTool,
@@ -64,6 +65,8 @@ def register_studio_tools() -> int:
         FileDownloadTool,
         FileWriteTool,
         FileContentTool,
+        ExcelReadTool,
+        ExcelWriteTool,
         PDFParserTool,
         APICallerTool,
         HTMLParserTool,
