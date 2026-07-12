@@ -18,6 +18,7 @@ from genxai.connectors import (
     GoogleWorkspaceConnector,
     JiraConnector,
     NotionConnector,
+    PostgresConnector,
     SlackConnector,
 )
 from genxai.tools.base import Tool, ToolCategory, ToolMetadata, ToolParameter
@@ -29,6 +30,7 @@ CONNECTOR_CLASSES: dict[str, type[Connector]] = {
     "jira": JiraConnector,
     "notion": NotionConnector,
     "google_workspace": GoogleWorkspaceConnector,
+    "postgres": PostgresConnector,
 }
 
 CONNECTOR_CATALOG: list[dict[str, Any]] = [
@@ -83,6 +85,47 @@ CONNECTOR_CATALOG: list[dict[str, Any]] = [
             "list_channels": {
                 "description": "List channels",
                 "params": [{"name": "types", "required": False, "example": "public_channel"}],
+            },
+        },
+    },
+    {
+        "type": "postgres",
+        "label": "PostgreSQL",
+        "icon": "🐘",
+        "color": "#336791",
+        "credential_fields": [
+            {
+                "name": "connection_string",
+                "secret": True,
+                "example": "postgresql://user:pass@host:5432/db",
+            }
+        ],
+        "actions": {
+            "query": {
+                "description": "Run a read-only SELECT/WITH query",
+                "params": [
+                    {"name": "sql", "required": True, "example": "SELECT * FROM orders WHERE total > :min"},
+                    {"name": "params", "required": False, "example": {"min": 100}},
+                    {"name": "max_rows", "required": False, "example": 500},
+                ],
+            },
+            "execute": {
+                "description": "Run a write statement (INSERT/UPDATE/DELETE/DDL)",
+                "params": [
+                    {"name": "sql", "required": True, "example": "UPDATE orders SET status = :s WHERE id = :id"},
+                    {"name": "params", "required": False, "example": {"s": "shipped", "id": 1}},
+                ],
+            },
+            "insert_rows": {
+                "description": "Bulk-insert a list of objects into a table",
+                "params": [
+                    {"name": "table", "required": True, "example": "articles"},
+                    {"name": "rows", "required": True, "example": "{{ poll_feed.data.items }}"},
+                ],
+            },
+            "list_tables": {
+                "description": "List table names visible to this connection",
+                "params": [],
             },
         },
     },
