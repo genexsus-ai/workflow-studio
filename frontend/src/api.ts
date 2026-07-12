@@ -1,4 +1,7 @@
 import type {
+  Analysis,
+  AnalysisCell,
+  AnalysisSummary,
   AutomationConfig,
   DatasetAggregateEntry,
   DatasetAnalysis,
@@ -234,6 +237,54 @@ export const apiBase = API
 
 export const listCredentials = () =>
   fetch(`${API}/credentials`).then((r) => json<CredentialSummary[]>(r))
+
+export const listAnalyses = () =>
+  fetch(`${API}/datascience/analyses`).then((r) => json<AnalysisSummary[]>(r))
+
+export const createAnalysis = (name: string, sources: Record<string, string> = {}) =>
+  fetch(`${API}/datascience/analyses`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, sources }),
+  }).then((r) => json<Analysis>(r))
+
+export const getAnalysis = (id: string) =>
+  fetch(`${API}/datascience/analyses/${id}`).then((r) => json<Analysis>(r))
+
+export const updateAnalysis = (
+  id: string,
+  patch: { name?: string; sources?: Record<string, string> },
+) =>
+  fetch(`${API}/datascience/analyses/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  }).then((r) => json<Analysis>(r))
+
+export const deleteAnalysis = (id: string) =>
+  fetch(`${API}/datascience/analyses/${id}`, { method: 'DELETE' })
+
+export const addAnalysisCell = (id: string, question: string) =>
+  fetch(`${API}/datascience/analyses/${id}/cells`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question }),
+  }).then((r) => json<AnalysisCell>(r))
+
+export const addManualCell = (id: string, sql: string, question?: string) =>
+  fetch(`${API}/datascience/analyses/${id}/cells/manual`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sql, question: question ?? null }),
+  }).then((r) => json<AnalysisCell>(r))
+
+export const rerunAnalysisCell = (id: string, cellId: string) =>
+  fetch(`${API}/datascience/analyses/${id}/cells/${cellId}/rerun`, {
+    method: 'POST',
+  }).then((r) => json<AnalysisCell>(r))
+
+export const deleteAnalysisCell = (id: string, cellId: string) =>
+  fetch(`${API}/datascience/analyses/${id}/cells/${cellId}`, { method: 'DELETE' })
 
 export const listSources = () =>
   fetch(`${API}/analytics/sources`).then((r) => json<SourceSummary[]>(r))

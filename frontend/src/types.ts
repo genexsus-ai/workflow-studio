@@ -313,6 +313,38 @@ export interface DatasetAnalysis {
   insight: string
 }
 
+export interface AnalysisSummary {
+  id: string
+  name: string
+  sources: Record<string, string>
+  cell_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface AnalysisCell {
+  id: string
+  question?: string | null
+  sql?: string | null
+  columns?: string[]
+  result_rows?: Record<string, unknown>[]
+  row_count?: number
+  chart?: { type: string; x: string; y: string } | null
+  narrative?: string | null
+  status: 'ok' | 'error'
+  error?: string | null
+  ran_at?: string
+}
+
+export interface Analysis {
+  id: string
+  name: string
+  sources: Record<string, string>
+  cells: AnalysisCell[]
+  created_at: string
+  updated_at: string
+}
+
 export interface McpServerSummary {
   name: string
   transport: string

@@ -33,6 +33,11 @@ from app.runner import (
 )
 from app.schemas import (
     AdhocRunRequest,
+    AnalysisCreate,
+    AnalysisPatch,
+    CellAsk,
+    CellManual,
+    CellPatch,
     AutomationConfig,
     CredentialCreate,
     DatasetAnalyzeRequest,
@@ -1332,3 +1337,161 @@ def _register_data_aliases() -> None:
 
 
 _register_data_aliases()
+
+
+# ------------------------------------------------------------- data science
+
+
+def _get_analysis_or_404(analysis_id: str) -> dict:
+    from app.datascience import get_analysis_store
+
+    analysis = get_analysis_store().get(analysis_id)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    return analysis
+
+
+def _validate_analysis_sources(sources: dict) -> dict[str, str]:
+    from app.data_catalog import resolve_source
+
+    clean: dict[str, str] = {}
+    for alias, source_id in (sources or {}).items():
+        if not str(alias).isidentifier():
+            raise HTTPException(
+                status_code=422, detail=f"Alias '{alias}' must be a valid identifier"
+            )
+        if resolve_source(str(source_id)) is None:
+            raise HTTPException(
+                status_code=404, detail=f"Source '{source_id}' not found"
+            )
+        clean[str(alias)] = str(source_id)
+    return clean
+
+
+@router.get("/datascience/analyses")
+def list_analyses() -> list[dict]:
+    from app.datascience import get_analysis_store
+
+    return get_analysis_store().list()
+
+
+@router.post("/datascience/analyses", status_code=201)
+def create_analysis(payload: AnalysisCreate) -> dict:
+    from app.datascience import get_analysis_store
+
+    if not payload.name.strip():
+        raise HTTPException(status_code=422, detail="name required")
+    sources = _validate_analysis_sources(payload.sources)
+    return get_analysis_store().create(payload.name.strip(), sources)
+
+
+@router.get("/datascience/analyses/{analysis_id}")
+def get_analysis(analysis_id: str) -> dict:
+    return _get_analysis_or_404(analysis_id)
+
+
+@router.patch("/datascience/analyses/{analysis_id}")
+def patch_analysis(analysis_id: str, payload: AnalysisPatch) -> dict:
+    from app.datascience import get_analysis_store
+
+    analysis = _get_analysis_or_404(analysis_id)
+    if payload.name is not None and payload.name.strip():
+        analysis["name"] = payload.name.strip()
+    if payload.sources is not None:
+        analysis["sources"] = _validate_analysis_sources(payload.sources)
+    get_analysis_store().save(analysis)
+    return analysis
+
+
+@router.delete("/datascience/analyses/{analysis_id}", status_code=204)
+def delete_analysis(analysis_id: str) -> None:
+    from app.datascience import get_analysis_store
+
+    if not get_analysis_store().delete(analysis_id):
+        raise HTTPException(status_code=404, detail="Analysis not found")
+
+
+@router.post("/datascience/analyses/{analysis_id}/cells", status_code=201)
+async def ask_cell(analysis_id: str, payload: CellAsk) -> dict:
+    """Agent cell: plan SQL from the question, execute, narrate."""
+    from app.datascience import get_analysis_store, run_agent_cell
+
+    analysis = _get_analysis_or_404(analysis_id)
+    if not analysis["sources"]:
+        raise HTTPException(
+            status_code=422, detail="Bind at least one source to the analysis first"
+        )
+    if not payload.question.strip():
+        raise HTTPException(status_code=422, detail="question required")
+    try:
+        cell = await run_agent_cell(analysis, payload.question.strip())
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    analysis["cells"].append(cell)
+    get_analysis_store().save(analysis)
+    return cell
+
+
+@router.post("/datascience/analyses/{analysis_id}/cells/manual", status_code=201)
+def manual_cell(analysis_id: str, payload: CellManual) -> dict:
+    from app.datascience import get_analysis_store, run_manual_cell
+
+    analysis = _get_analysis_or_404(analysis_id)
+    if not analysis["sources"]:
+        raise HTTPException(
+            status_code=422, detail="Bind at least one source to the analysis first"
+        )
+    cell = run_manual_cell(analysis, payload.sql, payload.question)
+    analysis["cells"].append(cell)
+    get_analysis_store().save(analysis)
+    return cell
+
+
+def _find_cell_or_404(analysis: dict, cell_id: str) -> dict:
+    cell = next((c for c in analysis["cells"] if c["id"] == cell_id), None)
+    if cell is None:
+        raise HTTPException(status_code=404, detail="Cell not found")
+    return cell
+
+
+@router.post("/datascience/analyses/{analysis_id}/cells/{cell_id}/rerun")
+def rerun_analysis_cell(analysis_id: str, cell_id: str) -> dict:
+    from app.datascience import get_analysis_store, rerun_cell
+
+    analysis = _get_analysis_or_404(analysis_id)
+    cell = _find_cell_or_404(analysis, cell_id)
+    rerun_cell(analysis, cell)
+    get_analysis_store().save(analysis)
+    return cell
+
+
+@router.patch("/datascience/analyses/{analysis_id}/cells/{cell_id}")
+def patch_analysis_cell(analysis_id: str, cell_id: str, payload: CellPatch) -> dict:
+    """Edit a cell's SQL (and/or question) and re-execute it."""
+    from app.datascience import get_analysis_store, rerun_cell
+
+    analysis = _get_analysis_or_404(analysis_id)
+    cell = _find_cell_or_404(analysis, cell_id)
+    if payload.question is not None:
+        cell["question"] = payload.question or None
+    if payload.sql is not None:
+        cell["sql"] = payload.sql
+    rerun_cell(analysis, cell)
+    get_analysis_store().save(analysis)
+    return cell
+
+
+@router.delete(
+    "/datascience/analyses/{analysis_id}/cells/{cell_id}", status_code=204
+)
+def delete_analysis_cell(analysis_id: str, cell_id: str) -> None:
+    from app.datascience import get_analysis_store
+
+    analysis = _get_analysis_or_404(analysis_id)
+    before = len(analysis["cells"])
+    analysis["cells"] = [c for c in analysis["cells"] if c["id"] != cell_id]
+    if len(analysis["cells"]) == before:
+        raise HTTPException(status_code=404, detail="Cell not found")
+    get_analysis_store().save(analysis)

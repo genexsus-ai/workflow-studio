@@ -48,6 +48,10 @@ def client(tmp_path, monkeypatch):
 
     analytics_sources.reset_source_registry()
 
+    import app.datascience as datascience
+
+    datascience.reset_analysis_store()
+
     import app.mcp_registry as mcp_registry
 
     monkeypatch.setattr(mcp_registry, "_store", None)

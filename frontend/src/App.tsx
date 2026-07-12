@@ -18,6 +18,7 @@ import { AutomationPanel } from './components/AutomationPanel'
 import type { PickedNode } from './components/NodePicker'
 import { Canvas } from './components/Canvas'
 import { ConfigPanel } from './components/ConfigPanel'
+import { DataScienceView } from './components/DataScienceView'
 import { DatasetsView } from './components/DatasetsView'
 import { InsightsView } from './components/InsightsView'
 import { CredentialsPanel } from './components/CredentialsPanel'
@@ -638,18 +639,9 @@ export default function App() {
           <div className="app">
             <DatasetsView />
           </div>
-        ) : activeApp !== 'workflow' ? (
-          <div className="app app-placeholder">
-            <div className="app-placeholder-body">
-              <h1>🧪 Data Science</h1>
-              <p>
-                This workspace is on the roadmap. Workflow Studio is the first
-                GenXAI app — more are coming.
-              </p>
-              <button onClick={() => setActiveApp('workflow')}>
-                ← Back to Workflow Studio
-              </button>
-            </div>
+        ) : activeApp === 'datascience' ? (
+          <div className="app">
+            <DataScienceView />
           </div>
         ) : (
       <div className="app">

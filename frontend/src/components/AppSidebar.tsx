@@ -12,7 +12,7 @@ interface AppEntry {
 const APPS: AppEntry[] = [
   { id: 'workflow', icon: '🧩', label: 'Workflow Studio', available: true },
   { id: 'analytics', icon: '📊', label: 'Analytics', available: true },
-  { id: 'datascience', icon: '🧪', label: 'Data Science', available: false },
+  { id: 'datascience', icon: '🧪', label: 'Data Science', available: true },
 ]
 
 const COLLAPSE_KEY = 'genxai-sidebar-collapsed'

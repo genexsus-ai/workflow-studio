@@ -113,6 +113,30 @@ class SourceCreate(BaseModel):
     config: dict[str, Any] = Field(default_factory=dict)
 
 
+class AnalysisCreate(BaseModel):
+    name: str
+    sources: dict[str, str] = Field(default_factory=dict)  # alias -> source id
+
+
+class AnalysisPatch(BaseModel):
+    name: str | None = None
+    sources: dict[str, str] | None = None
+
+
+class CellAsk(BaseModel):
+    question: str
+
+
+class CellManual(BaseModel):
+    sql: str
+    question: str | None = None
+
+
+class CellPatch(BaseModel):
+    sql: str | None = None
+    question: str | None = None
+
+
 class MaterializeRequest(BaseModel):
     dataset: str
     mode: str = "replace"  # replace: dataset mirrors the source; append: history
