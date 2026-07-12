@@ -272,6 +272,21 @@ export interface InsightsData {
   }[]
 }
 
+export interface SourceSummary {
+  id: string
+  name: string
+  kind: 'dataset' | 'sql' | 'file'
+  config: Record<string, unknown>
+  rows?: number
+  last_written_at?: string | null
+  created_at?: string
+}
+
+export interface SourceColumn {
+  name: string
+  type: string
+}
+
 export interface DatasetSummary {
   name: string
   created_at: string

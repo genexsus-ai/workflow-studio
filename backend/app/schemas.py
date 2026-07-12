@@ -107,6 +107,12 @@ class DatasetAnalyzeRequest(BaseModel):
     model: str | None = None
 
 
+class SourceCreate(BaseModel):
+    name: str
+    kind: str  # "sql" (P1); "file" arrives in P2
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
 class OAuthAppConfig(BaseModel):
     client_id: str
     client_secret: str

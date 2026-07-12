@@ -372,6 +372,41 @@ body {
   margin: 0;
 }
 
+.source-group-label {
+  margin: 10px 4px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.add-source-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.add-source-dialog {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 20px;
+  width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 10px 40px rgba(15, 23, 42, 0.25);
+}
+
+.add-source-dialog h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
 .dataset-item {
   display: flex;
   flex-direction: column;

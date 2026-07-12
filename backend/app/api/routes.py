@@ -42,6 +42,7 @@ from app.schemas import (
     NodeTestRequest,
     OAuthAppConfig,
     OAuthStartRequest,
+    SourceCreate,
     RunRequest,
     ValidationResult,
     WorkflowDoc,
@@ -519,19 +520,17 @@ def delete_dataset(name: str) -> None:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
 
-@router.post("/datasets/{name}/analyze")
-async def analyze_dataset(name: str, payload: DatasetAnalyzeRequest) -> dict:
-    """LLM analysis of a dataset sample: patterns, anomalies, suggestions."""
+async def _analyze_rows(
+    name: str, sample: dict, question: str | None, model_override: str | None
+) -> dict:
+    """LLM analysis of a rows sample: patterns, anomalies, suggestions."""
     from app.generation import DEFAULT_GENERATION_MODEL, _resolve_model_and_key
-    from genxai.core.datasets import get_dataset_store
     from genxai.llm.factory import LLMProviderFactory
 
-    store = get_dataset_store()
-    sample = store.rows(name, limit=50)
-    if sample["total"] == 0:
-        raise HTTPException(status_code=404, detail="Dataset is empty or missing")
+    if sample["total"] == 0 or not sample["rows"]:
+        raise HTTPException(status_code=404, detail="Source is empty or missing")
 
-    model, api_key = _resolve_model_and_key(payload.model or DEFAULT_GENERATION_MODEL)
+    model, api_key = _resolve_model_and_key(model_override or DEFAULT_GENERATION_MODEL)
     if api_key is None:
         raise HTTPException(
             status_code=409,
@@ -542,17 +541,16 @@ async def analyze_dataset(name: str, payload: DatasetAnalyzeRequest) -> dict:
     columns = sorted(
         {key for row in sample["rows"] for key in row if not key.startswith("_")}
     )
-    question = payload.question or (
+    effective_question = question or (
         "What patterns, outliers, and actionable insights do you see?"
     )
     prompt = (
-        f"Dataset '{name}': {sample['total']} rows total; columns: "
+        f"Data source '{name}': {sample['total']} rows total; columns: "
         f"{', '.join(columns) or '(none)'}.\n"
-        f"Newest {len(sample['rows'])} rows as JSON:\n{json.dumps(sample['rows'], default=str)[:12000]}\n\n"
-        f"Question: {question}\n"
+        f"Sample of {len(sample['rows'])} rows as JSON:\n{json.dumps(sample['rows'], default=str)[:12000]}\n\n"
+        f"Question: {effective_question}\n"
         "Answer with 3-6 concise bullet points grounded ONLY in this data. "
-        "Note explicitly that the sample is the newest rows if that limits "
-        "any conclusion."
+        "Note explicitly that this is a sample if that limits any conclusion."
     )
     provider = LLMProviderFactory.create_provider(model=model, api_key=api_key)
     response = await provider.generate(
@@ -565,6 +563,134 @@ async def analyze_dataset(name: str, payload: DatasetAnalyzeRequest) -> dict:
         "total_rows": sample["total"],
         "insight": response.content,
     }
+
+
+@router.post("/datasets/{name}/analyze")
+async def analyze_dataset(name: str, payload: DatasetAnalyzeRequest) -> dict:
+    from genxai.core.datasets import get_dataset_store
+
+    sample = get_dataset_store().rows(name, limit=50)
+    return await _analyze_rows(name, sample, payload.question, payload.model)
+
+
+# ---------------------------------------------------------- analytics sources
+
+
+def _resolve_source_or_404(source_id: str) -> tuple[dict, "Any"]:
+    from app.analytics_sources import get_adapter, resolve_source
+
+    source = resolve_source(source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    try:
+        return source, get_adapter(source)
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/analytics/sources")
+def list_analytics_sources() -> list[dict]:
+    from app.analytics_sources import list_all_sources
+
+    return list_all_sources()
+
+
+@router.post("/analytics/sources", status_code=201)
+def create_analytics_source(payload: SourceCreate) -> dict:
+    from app.analytics_sources import SQLAdapter, get_source_registry
+
+    if payload.kind != "sql":
+        raise HTTPException(
+            status_code=422, detail="Only 'sql' sources can be registered (P1)"
+        )
+    credential = str(payload.config.get("credential") or "")
+    table = str(payload.config.get("table") or "")
+    if not payload.name.strip() or not credential or not table:
+        raise HTTPException(
+            status_code=422, detail="name, config.credential and config.table required"
+        )
+    # Fail fast: adapter construction + a schema probe validate everything
+    try:
+        adapter = SQLAdapter(credential, table)
+        schema = adapter.schema()
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422, detail=f"Cannot read table '{table}': {exc}"
+        ) from exc
+    if not schema:
+        raise HTTPException(status_code=422, detail=f"Table '{table}' has no columns")
+    return get_source_registry().create(
+        payload.name.strip(), "sql", {"credential": credential, "table": table}
+    )
+
+
+@router.delete("/analytics/sources/{source_id}", status_code=204)
+def delete_analytics_source(source_id: str) -> None:
+    from app.analytics_sources import get_source_registry
+
+    if source_id.startswith("dataset:"):
+        raise HTTPException(
+            status_code=422,
+            detail="Datasets are managed on /datasets — delete the dataset itself",
+        )
+    if not get_source_registry().delete(source_id):
+        raise HTTPException(status_code=404, detail="Source not found")
+
+
+@router.get("/analytics/sources/{source_id}/schema")
+def get_source_schema(source_id: str) -> list[dict]:
+    _, adapter = _resolve_source_or_404(source_id)
+    try:
+        return adapter.schema()
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/analytics/sources/{source_id}/rows")
+def get_source_rows(source_id: str, limit: int = 50, offset: int = 0) -> dict:
+    _, adapter = _resolve_source_or_404(source_id)
+    try:
+        return adapter.rows(limit=max(1, min(limit, 500)), offset=max(0, offset))
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/analytics/sources/{source_id}/aggregate")
+def aggregate_source(
+    source_id: str,
+    metric: str = "count",
+    field: str | None = None,
+    group_by: str | None = None,
+) -> list[dict]:
+    _, adapter = _resolve_source_or_404(source_id)
+    try:
+        return adapter.aggregate(metric=metric, field=field, group_by=group_by)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/analytics/sources/{source_id}/analyze")
+async def analyze_source(source_id: str, payload: DatasetAnalyzeRequest) -> dict:
+    source, adapter = _resolve_source_or_404(source_id)
+    try:
+        sample = adapter.rows(limit=50, offset=0)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return await _analyze_rows(source["name"], sample, payload.question, payload.model)
+
+
+@router.get("/analytics/credentials/{credential}/tables")
+def get_credential_tables(credential: str) -> dict:
+    from app.analytics_sources import list_credential_tables
+
+    try:
+        return {"tables": list_credential_tables(credential)}
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/insights")

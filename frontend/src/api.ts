@@ -6,6 +6,8 @@ import type {
   DatasetSummary,
   InsightsData,
   RunRecord,
+  SourceColumn,
+  SourceSummary,
   CredentialSummary,
   McpServerSummary,
   McpToolInfo,
@@ -232,6 +234,48 @@ export const apiBase = API
 
 export const listCredentials = () =>
   fetch(`${API}/credentials`).then((r) => json<CredentialSummary[]>(r))
+
+export const listSources = () =>
+  fetch(`${API}/analytics/sources`).then((r) => json<SourceSummary[]>(r))
+
+export const createSource = (name: string, kind: string, config: Record<string, unknown>) =>
+  fetch(`${API}/analytics/sources`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, kind, config }),
+  }).then((r) => json<SourceSummary>(r))
+
+export const deleteSource = (id: string) =>
+  fetch(`${API}/analytics/sources/${id}`, { method: 'DELETE' })
+
+export const getSourceSchema = (id: string) =>
+  fetch(`${API}/analytics/sources/${id}/schema`).then((r) => json<SourceColumn[]>(r))
+
+export const getSourceRows = (id: string, limit = 50, offset = 0) =>
+  fetch(`${API}/analytics/sources/${id}/rows?limit=${limit}&offset=${offset}`).then((r) =>
+    json<DatasetRowsPage>(r),
+  )
+
+export const aggregateSource = (id: string, metric: string, field?: string, groupBy?: string) => {
+  const params = new URLSearchParams({ metric })
+  if (field) params.set('field', field)
+  if (groupBy) params.set('group_by', groupBy)
+  return fetch(`${API}/analytics/sources/${id}/aggregate?${params}`).then((r) =>
+    json<DatasetAggregateEntry[]>(r),
+  )
+}
+
+export const analyzeSource = (id: string, question?: string) =>
+  fetch(`${API}/analytics/sources/${id}/analyze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question: question || null }),
+  }).then((r) => json<DatasetAnalysis>(r))
+
+export const listCredentialTables = (credential: string) =>
+  fetch(`${API}/analytics/credentials/${credential}/tables`).then((r) =>
+    json<{ tables: string[] }>(r),
+  )
 
 export const listDatasets = () =>
   fetch(`${API}/datasets`).then((r) => json<DatasetSummary[]>(r))
