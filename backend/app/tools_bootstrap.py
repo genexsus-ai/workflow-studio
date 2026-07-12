@@ -21,6 +21,10 @@ def register_studio_tools() -> int:
     from genxai.tools.builtin.computation.hash_generator import HashGeneratorTool
     from genxai.tools.builtin.computation.regex_matcher import RegexMatcherTool
     from genxai.tools.builtin.data.csv_processor import CSVProcessorTool
+    from genxai.tools.builtin.data.dataset_tools import (
+        DatasetQueryTool,
+        DatasetWriteTool,
+    )
     from genxai.tools.builtin.data.data_transformer import DataTransformerTool
     from genxai.tools.builtin.data.json_processor import JSONProcessorTool
     from genxai.tools.builtin.data.text_analyzer import TextAnalyzerTool
@@ -49,6 +53,8 @@ def register_studio_tools() -> int:
         HashGeneratorTool,
         RegexMatcherTool,
         CSVProcessorTool,
+        DatasetWriteTool,
+        DatasetQueryTool,
         DataTransformerTool,
         JSONProcessorTool,
         TextAnalyzerTool,

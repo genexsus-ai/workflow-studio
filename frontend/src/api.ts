@@ -1,5 +1,9 @@
 import type {
   AutomationConfig,
+  DatasetAggregateEntry,
+  DatasetAnalysis,
+  DatasetRowsPage,
+  DatasetSummary,
   InsightsData,
   RunRecord,
   CredentialSummary,
@@ -228,6 +232,38 @@ export const apiBase = API
 
 export const listCredentials = () =>
   fetch(`${API}/credentials`).then((r) => json<CredentialSummary[]>(r))
+
+export const listDatasets = () =>
+  fetch(`${API}/datasets`).then((r) => json<DatasetSummary[]>(r))
+
+export const getDatasetRows = (name: string, limit = 50, offset = 0) =>
+  fetch(`${API}/datasets/${name}/rows?limit=${limit}&offset=${offset}`).then((r) =>
+    json<DatasetRowsPage>(r),
+  )
+
+export const aggregateDataset = (
+  name: string,
+  metric: string,
+  field?: string,
+  groupBy?: string,
+) => {
+  const params = new URLSearchParams({ metric })
+  if (field) params.set('field', field)
+  if (groupBy) params.set('group_by', groupBy)
+  return fetch(`${API}/datasets/${name}/aggregate?${params}`).then((r) =>
+    json<DatasetAggregateEntry[]>(r),
+  )
+}
+
+export const deleteDataset = (name: string) =>
+  fetch(`${API}/datasets/${name}`, { method: 'DELETE' })
+
+export const analyzeDataset = (name: string, question?: string) =>
+  fetch(`${API}/datasets/${name}/analyze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question: question || null }),
+  }).then((r) => json<DatasetAnalysis>(r))
 
 export const getInsights = (days: number) =>
   fetch(`${API}/insights?days=${days}`).then((r) => json<InsightsData>(r))

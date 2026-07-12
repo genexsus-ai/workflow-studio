@@ -1,0 +1,48 @@
+{
+  "id": "example-dataset-collect",
+  "name": "Example: Collect news into a dataset",
+  "description": "Data collection pattern: a schedule fires the run, the poll fetches items, and dataset_write appends them to the durable 'news_articles' dataset — rows accumulate across runs and appear in the Analytics app (table, charts, Ask AI). Run it manually a few times, then open Analytics. No API keys needed.",
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger",
+      "label": "Hourly",
+      "position": { "x": 40, "y": 160 },
+      "config": { "trigger_kind": "schedule", "interval_seconds": 3600 }
+    },
+    {
+      "id": "poll_feed",
+      "type": "tool",
+      "label": "Poll Hacker News feed",
+      "position": { "x": 280, "y": 160 },
+      "config": {
+        "tool_name": "rss_reader",
+        "tool_params": { "url": "https://hnrss.org/frontpage", "limit": 10 }
+      }
+    },
+    {
+      "id": "collect",
+      "type": "tool",
+      "label": "Append to dataset",
+      "position": { "x": 520, "y": 160 },
+      "config": {
+        "tool_name": "dataset_write",
+        "tool_params": {
+          "dataset": "news_articles",
+          "rows": "{{ poll_feed.data.items }}"
+        }
+      }
+    },
+    {
+      "id": "end",
+      "type": "output",
+      "label": "Output",
+      "position": { "x": 760, "y": 160 },
+      "config": {}
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "poll_feed", "target": "collect", "condition": null, "parallel": false },
+    { "id": "e2", "source": "collect", "target": "end", "condition": null, "parallel": false }
+  ]
+}

@@ -102,6 +102,11 @@ class HumanInputResponse(BaseModel):
     response: Any = None
 
 
+class DatasetAnalyzeRequest(BaseModel):
+    question: str | None = None
+    model: str | None = None
+
+
 class OAuthAppConfig(BaseModel):
     client_id: str
     client_secret: str

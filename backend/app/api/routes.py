@@ -35,6 +35,7 @@ from app.schemas import (
     AdhocRunRequest,
     AutomationConfig,
     CredentialCreate,
+    DatasetAnalyzeRequest,
     GenerateRequest,
     HumanInputResponse,
     MCPServerCreate,
@@ -465,6 +466,105 @@ async def fire_webhook(token: str, request: Request) -> dict:
 
     run_id = get_run_manager().submit(doc, input_data, trigger="webhook")
     return {"status": "accepted", "run_id": run_id, "workflow_id": doc.id}
+
+
+# ----------------------------------------------------------------- datasets
+
+
+@router.get("/datasets")
+def list_datasets() -> list[dict]:
+    from genxai.core.datasets import get_dataset_store
+
+    return get_dataset_store().list_datasets()
+
+
+@router.get("/datasets/{name}/rows")
+def get_dataset_rows(name: str, limit: int = 50, offset: int = 0) -> dict:
+    from genxai.core.datasets import get_dataset_store
+
+    try:
+        return get_dataset_store().rows(
+            name, limit=max(1, min(limit, 500)), offset=max(0, offset)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/datasets/{name}/aggregate")
+def aggregate_dataset(
+    name: str,
+    metric: str = "count",
+    field: str | None = None,
+    group_by: str | None = None,
+) -> list[dict]:
+    from genxai.core.datasets import get_dataset_store
+
+    try:
+        return get_dataset_store().aggregate(
+            name, metric=metric, field=field, group_by=group_by
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.delete("/datasets/{name}", status_code=204)
+def delete_dataset(name: str) -> None:
+    from genxai.core.datasets import get_dataset_store
+
+    try:
+        deleted = get_dataset_store().delete_dataset(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+
+@router.post("/datasets/{name}/analyze")
+async def analyze_dataset(name: str, payload: DatasetAnalyzeRequest) -> dict:
+    """LLM analysis of a dataset sample: patterns, anomalies, suggestions."""
+    from app.generation import DEFAULT_GENERATION_MODEL, _resolve_model_and_key
+    from genxai.core.datasets import get_dataset_store
+    from genxai.llm.factory import LLMProviderFactory
+
+    store = get_dataset_store()
+    sample = store.rows(name, limit=50)
+    if sample["total"] == 0:
+        raise HTTPException(status_code=404, detail="Dataset is empty or missing")
+
+    model, api_key = _resolve_model_and_key(payload.model or DEFAULT_GENERATION_MODEL)
+    if api_key is None:
+        raise HTTPException(
+            status_code=409,
+            detail="No LLM API key configured — set OPENAI_API_KEY or "
+            "ANTHROPIC_API_KEY in the backend .env",
+        )
+
+    columns = sorted(
+        {key for row in sample["rows"] for key in row if not key.startswith("_")}
+    )
+    question = payload.question or (
+        "What patterns, outliers, and actionable insights do you see?"
+    )
+    prompt = (
+        f"Dataset '{name}': {sample['total']} rows total; columns: "
+        f"{', '.join(columns) or '(none)'}.\n"
+        f"Newest {len(sample['rows'])} rows as JSON:\n{json.dumps(sample['rows'], default=str)[:12000]}\n\n"
+        f"Question: {question}\n"
+        "Answer with 3-6 concise bullet points grounded ONLY in this data. "
+        "Note explicitly that the sample is the newest rows if that limits "
+        "any conclusion."
+    )
+    provider = LLMProviderFactory.create_provider(model=model, api_key=api_key)
+    response = await provider.generate(
+        prompt, system_prompt="You are a careful data analyst."
+    )
+    return {
+        "dataset": name,
+        "model": model,
+        "sampled_rows": len(sample["rows"]),
+        "total_rows": sample["total"],
+        "insight": response.content,
+    }
 
 
 @router.get("/insights")

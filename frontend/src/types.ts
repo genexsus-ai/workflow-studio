@@ -272,6 +272,32 @@ export interface InsightsData {
   }[]
 }
 
+export interface DatasetSummary {
+  name: string
+  created_at: string
+  rows: number
+  last_written_at: string | null
+}
+
+export interface DatasetRowsPage {
+  rows: Record<string, unknown>[]
+  total: number
+}
+
+export interface DatasetAggregateEntry {
+  group: string
+  value: number
+  rows: number
+}
+
+export interface DatasetAnalysis {
+  dataset: string
+  model: string
+  sampled_rows: number
+  total_rows: number
+  insight: string
+}
+
 export interface McpServerSummary {
   name: string
   transport: string

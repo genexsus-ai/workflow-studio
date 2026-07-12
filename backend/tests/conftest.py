@@ -38,9 +38,11 @@ def client(tmp_path, monkeypatch):
 
     oauth_flow.reset_pending()
 
+    from genxai.core.datasets import reset_dataset_store
     from genxai.core.files import reset_file_store
 
     reset_file_store()
+    reset_dataset_store()
 
     import app.mcp_registry as mcp_registry
 
