@@ -419,3 +419,111 @@ def rerun_all(analysis: dict[str, Any]) -> dict[str, Any]:
         if cell.get("sql"):
             rerun_cell(analysis, cell)
     return analysis
+
+
+# ------------------------------------------------------------------- reports
+
+
+def build_report(analysis: dict[str, Any]) -> str:
+    """A markdown report of the analysis: questions, key numbers, narratives."""
+    lines = [f"# {analysis['name']}", ""]
+    ok = errors = 0
+    for index, cell in enumerate(analysis["cells"], 1):
+        title = cell.get("question") or f"Query {index}"
+        lines.append(f"## {index}. {title}")
+        if cell.get("status") != "ok":
+            errors += 1
+            lines.append(f"⚠ failed: {cell.get('error')}")
+            lines.append("")
+            continue
+        ok += 1
+        rows = cell.get("result_rows") or []
+        columns = cell.get("columns") or []
+        if rows and columns:
+            preview = rows[:5]
+            lines.append("| " + " | ".join(columns) + " |")
+            lines.append("|" + "---|" * len(columns))
+            for row in preview:
+                lines.append(
+                    "| "
+                    + " | ".join(
+                        "—" if row.get(c) is None else str(row.get(c)) for c in columns
+                    )
+                    + " |"
+                )
+            if (cell.get("row_count") or 0) > 5:
+                lines.append(f"*…{cell['row_count']} rows total*")
+        if cell.get("narrative"):
+            lines.append("")
+            lines.append(cell["narrative"])
+        lines.append("")
+    lines.append(f"---\n{ok} findings, {errors} failed cells.")
+    return "\n".join(lines)
+
+
+def make_analysis_report_tool() -> Any:
+    """A workflow tool: rerun an analysis and return its markdown report."""
+    from genxai.tools.base import Tool, ToolCategory, ToolMetadata, ToolParameter
+
+    class AnalysisReportTool(Tool):
+        def __init__(self) -> None:
+            super().__init__(
+                metadata=ToolMetadata(
+                    name="analysis_report",
+                    description=(
+                        "Re-run a Data Science analysis against current data "
+                        "and return its findings as a markdown report"
+                    ),
+                    category=ToolCategory.DATA_PROCESSING,
+                    tags=["analysis", "report", "datascience"],
+                    version="1.0.0",
+                ),
+                parameters=[
+                    ToolParameter(
+                        name="analysis",
+                        type="string",
+                        description="Analysis id or name",
+                        required=True,
+                    ),
+                    ToolParameter(
+                        name="rerun",
+                        type="boolean",
+                        description="Re-execute all cells first (default true)",
+                        required=False,
+                        default=True,
+                    ),
+                ],
+            )
+
+        async def _execute(self, **kwargs: Any) -> dict[str, Any]:
+            import asyncio
+
+            identifier = str(kwargs["analysis"])
+
+            def _run() -> dict[str, Any]:
+                store = get_analysis_store()
+                analysis = store.get(identifier)
+                if analysis is None:
+                    lowered = identifier.lower()
+                    match = next(
+                        (a for a in store.list() if a["name"].lower() == lowered),
+                        None,
+                    )
+                    analysis = store.get(match["id"]) if match else None
+                if analysis is None:
+                    raise ValueError(f"Analysis '{identifier}' not found")
+                if kwargs.get("rerun", True):
+                    rerun_all(analysis)
+                    store.save(analysis)
+                ok = sum(1 for c in analysis["cells"] if c.get("status") == "ok")
+                return {
+                    "analysis": analysis["id"],
+                    "name": analysis["name"],
+                    "report": build_report(analysis),
+                    "cells_ok": ok,
+                    "cells_error": len(analysis["cells"]) - ok,
+                }
+
+            return await asyncio.to_thread(_run)
+
+    return AnalysisReportTool()

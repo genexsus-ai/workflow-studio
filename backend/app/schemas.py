@@ -199,3 +199,24 @@ class ValidationIssue(BaseModel):
 class ValidationResult(BaseModel):
     valid: bool
     issues: list[ValidationIssue] = Field(default_factory=list)
+
+
+class ScheduleReportRequest(BaseModel):
+    interval_seconds: int = 86400
+    cron: str | None = None
+    slack_credential: str | None = None
+    slack_channel: str | None = None
+
+
+class ModelTrainRequest(BaseModel):
+    name: str
+    source: str
+    target: str
+    model_type: str
+    features: list[str] | None = None
+
+
+class ModelPredictRequest(BaseModel):
+    source: str
+    dataset: str | None = None
+    mode: str = "replace"

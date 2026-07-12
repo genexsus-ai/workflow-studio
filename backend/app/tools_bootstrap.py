@@ -84,12 +84,21 @@ def register_studio_tools() -> int:
         except Exception as exc:
             logger.warning("Skipping tool %s: %s", tool_class.__name__, exc)
 
-    try:
-        source_query = make_source_query_tool()
-        if ToolRegistry.get(source_query.metadata.name) is None:
-            ToolRegistry.register(source_query)
-    except Exception as exc:
-        logger.warning("Skipping source_query tool: %s", exc)
+    from app.datascience import make_analysis_report_tool
+    from app.ml import make_model_predict_tool, make_model_train_tool
+
+    for factory in (
+        make_source_query_tool,
+        make_analysis_report_tool,
+        make_model_train_tool,
+        make_model_predict_tool,
+    ):
+        try:
+            tool = factory()
+            if ToolRegistry.get(tool.metadata.name) is None:
+                ToolRegistry.register(tool)
+        except Exception as exc:
+            logger.warning("Skipping %s: %s", factory.__name__, exc)
 
     count = len(ToolRegistry.list_all())
     logger.info("Studio tool palette ready: %d tools", count)

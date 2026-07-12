@@ -493,3 +493,48 @@ export const rerunRun = (runId: string) =>
 
 export const deleteRun = (runId: string) =>
   fetch(`${API}/runs/${runId}`, { method: 'DELETE' })
+
+export interface ModelInfo {
+  id: string
+  name: string
+  model_type: string
+  source_id: string
+  target: string
+  features: string[]
+  metrics: Record<string, number>
+  created_at: string
+}
+
+export const listModels = () =>
+  fetch(`${API}/datascience/models`).then((r) => json<ModelInfo[]>(r))
+
+export const trainModel = (
+  name: string,
+  source: string,
+  target: string,
+  modelType: string,
+) =>
+  fetch(`${API}/datascience/models/train`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, source, target, model_type: modelType }),
+  }).then((r) => json<ModelInfo>(r))
+
+export const deleteModel = (id: string) =>
+  fetch(`${API}/datascience/models/${id}`, { method: 'DELETE' })
+
+export const scheduleReport = (
+  analysisId: string,
+  intervalSeconds: number,
+  slackCredential?: string,
+  slackChannel?: string,
+) =>
+  fetch(`${API}/datascience/analyses/${analysisId}/schedule-report`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      interval_seconds: intervalSeconds,
+      slack_credential: slackCredential || null,
+      slack_channel: slackChannel || null,
+    }),
+  }).then((r) => json<{ workflow_id: string; workflow_name: string }>(r))

@@ -6,14 +6,19 @@ import {
   createAnalysis,
   deleteAnalysis,
   deleteAnalysisCell,
+  deleteModel,
   getAnalysis,
   listAnalyses,
+  listModels,
   listSources,
   materializeCell,
   rerunAllCells,
   rerunAnalysisCell,
+  scheduleReport,
+  trainModel,
   updateAnalysis,
   updateAnalysisCell,
+  type ModelInfo,
 } from '../api'
 import type { Analysis, AnalysisCell, AnalysisSummary, SourceSummary } from '../types'
 
@@ -105,6 +110,122 @@ export function DataScienceView() {
       ) : (
         <div className="dataset-detail" />
       )}
+      <aside className="models-rail">
+        <ModelsPanel />
+      </aside>
+    </div>
+  )
+}
+
+function ModelsPanel() {
+  const [models, setModels] = useState<ModelInfo[]>([])
+  const [sources, setSources] = useState<SourceSummary[]>([])
+  const [training, setTraining] = useState(false)
+  const [name, setName] = useState('')
+  const [source, setSource] = useState('')
+  const [target, setTarget] = useState('')
+  const [modelType, setModelType] = useState('linear_regression')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const refresh = useCallback(() => {
+    listModels().then(setModels).catch(() => setModels([]))
+    listSources().then(setSources).catch(() => setSources([]))
+  }, [])
+
+  useEffect(refresh, [refresh])
+
+  const metricLabel = (model: ModelInfo) =>
+    model.metrics.r2 != null
+      ? `R² ${model.metrics.r2}`
+      : model.metrics.accuracy != null
+        ? `acc ${model.metrics.accuracy}`
+        : ''
+
+  return (
+    <div>
+      <div className="datasets-list-header">
+        <h1>Models</h1>
+        <button onClick={() => setTraining((open) => !open)} title="Train a model">
+          ＋
+        </button>
+      </div>
+      {training && (
+        <div className="credential-form">
+          <input value={name} placeholder="Model name" onChange={(e) => setName(e.target.value)} />
+          <select value={source} onChange={(e) => setSource(e.target.value)}>
+            <option value="">Source…</option>
+            {sources
+              .filter((s) => s.kind !== 'duckdb')
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+          </select>
+          <input
+            value={target}
+            placeholder="Target column"
+            onChange={(e) => setTarget(e.target.value)}
+          />
+          <select value={modelType} onChange={(e) => setModelType(e.target.value)}>
+            <option value="linear_regression">Linear regression</option>
+            <option value="logistic_regression">Logistic regression</option>
+            <option value="random_forest_regression">Random forest (reg)</option>
+            <option value="random_forest_classification">Random forest (clf)</option>
+          </select>
+          <div className="credential-form-actions">
+            <button
+              className="primary-small"
+              disabled={busy || !name.trim() || !source || !target.trim()}
+              onClick={async () => {
+                setBusy(true)
+                setError(null)
+                try {
+                  await trainModel(name.trim(), source, target.trim(), modelType)
+                  setTraining(false)
+                  setName('')
+                  setTarget('')
+                  refresh()
+                } catch (err) {
+                  setError((err as Error).message)
+                } finally {
+                  setBusy(false)
+                }
+              }}
+            >
+              {busy ? 'Training…' : 'Train'}
+            </button>
+            <button onClick={() => setTraining(false)}>Cancel</button>
+          </div>
+          {error && <p className="error-text">{error}</p>}
+        </div>
+      )}
+      {models.length === 0 && !training && (
+        <p className="config-subtitle">
+          No models yet. Train one on a catalog source; apply it with the
+          <code> model_predict</code> tool in workflows.
+        </p>
+      )}
+      {models.map((model) => (
+        <div key={model.id} className="credential-row">
+          <span title={`target: ${model.target} · features: ${model.features.join(', ')}`}>
+            <strong>{model.name}</strong>{' '}
+            <em>
+              {model.model_type.replace(/_/g, ' ')} · {metricLabel(model)}
+            </em>
+          </span>
+          <button
+            className="danger"
+            onClick={async () => {
+              await deleteModel(model.id)
+              refresh()
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
     </div>
   )
 }
@@ -123,6 +244,11 @@ function AnalysisDetail({
   const [manualSql, setManualSql] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [scheduling, setScheduling] = useState(false)
+  const [reportInterval, setReportInterval] = useState(86400)
+  const [slackCredential, setSlackCredential] = useState('')
+  const [slackChannel, setSlackChannel] = useState('')
+  const [scheduled, setScheduled] = useState<string | null>(null)
 
   const load = useCallback(() => {
     getAnalysis(analysisId).then(setAnalysis).catch(() => setAnalysis(null))
@@ -175,20 +301,29 @@ function AnalysisDetail({
         <h2>{analysis.name}</h2>
         <span className="credential-row-actions">
           {analysis.cells.length > 0 && (
-            <button
-              disabled={busy}
-              title="Re-run every cell against current data"
-              onClick={async () => {
-                setBusy(true)
-                try {
-                  setAnalysis(await rerunAllCells(analysisId))
-                } finally {
-                  setBusy(false)
-                }
-              }}
-            >
-              ↻ Rerun all
-            </button>
+            <>
+              <button
+                disabled={busy}
+                title="Re-run every cell against current data"
+                onClick={async () => {
+                  setBusy(true)
+                  try {
+                    setAnalysis(await rerunAllCells(analysisId))
+                  } finally {
+                    setBusy(false)
+                  }
+                }}
+              >
+                ↻ Rerun all
+              </button>
+              <button
+                disabled={busy}
+                title="Create a scheduled workflow that reruns this analysis and reports the findings"
+                onClick={() => setScheduling((open) => !open)}
+              >
+                📅
+              </button>
+            </>
           )}
           <button
             className="danger"
@@ -202,6 +337,75 @@ function AnalysisDetail({
           </button>
         </span>
       </div>
+
+      {scheduling && (
+        <section className="insights-card">
+          <h2>Schedule report</h2>
+          {scheduled ? (
+            <p className="config-subtitle">✓ {scheduled}</p>
+          ) : (
+            <>
+              <div className="insights-filters chart-builder-filters">
+                <label>
+                  Every{' '}
+                  <select
+                    value={reportInterval}
+                    onChange={(e) => setReportInterval(Number(e.target.value))}
+                  >
+                    <option value={3600}>hour</option>
+                    <option value={86400}>day</option>
+                    <option value={604800}>week</option>
+                  </select>
+                </label>
+                <label>
+                  Slack credential{' '}
+                  <input
+                    value={slackCredential}
+                    placeholder="optional"
+                    onChange={(e) => setSlackCredential(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Channel{' '}
+                  <input
+                    value={slackChannel}
+                    placeholder="#reports"
+                    onChange={(e) => setSlackChannel(e.target.value)}
+                  />
+                </label>
+                <button
+                  className="primary-small"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true)
+                    try {
+                      const result = await scheduleReport(
+                        analysisId,
+                        reportInterval,
+                        slackCredential || undefined,
+                        slackChannel || undefined,
+                      )
+                      setScheduled(
+                        `Workflow "${result.workflow_name}" created and scheduled.`,
+                      )
+                    } catch (err) {
+                      setError((err as Error).message)
+                    } finally {
+                      setBusy(false)
+                    }
+                  }}
+                >
+                  Create
+                </button>
+              </div>
+              <p className="config-subtitle">
+                Generates a workflow that reruns every cell and reports the
+                findings — open it in Workflow Studio to customize.
+              </p>
+            </>
+          )}
+        </section>
+      )}
 
       <section className="insights-card">
         <h2>Data</h2>
