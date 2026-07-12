@@ -48,6 +48,9 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    from genxai.core.files import configure_file_store
+
+    configure_file_store(settings.data_dir / "files")
     register_studio_tools()
     seed_examples(settings.data_dir)
 

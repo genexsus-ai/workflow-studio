@@ -571,6 +571,27 @@ button.danger {
   font-size: 12px;
 }
 
+.file-ref-links {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.file-ref-links a {
+  font-size: 12px;
+  color: #2563eb;
+  text-decoration: none;
+  padding: 4px 8px;
+  border: 1px solid #dbeafe;
+  border-radius: 6px;
+  background: #eff6ff;
+}
+
+.file-ref-links a:hover {
+  border-color: #2563eb;
+}
+
 .output-paths {
   margin-top: 6px;
   font-size: 11px;

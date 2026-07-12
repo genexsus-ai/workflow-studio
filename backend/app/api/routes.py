@@ -467,6 +467,26 @@ async def fire_webhook(token: str, request: Request) -> dict:
     return {"status": "accepted", "run_id": run_id, "workflow_id": doc.id}
 
 
+@router.get("/files/{file_id}")
+def download_file(file_id: str) -> "FileResponse":
+    """Stream a stored workflow file (from file_download / file_write refs)."""
+    from fastapi.responses import FileResponse
+
+    from genxai.core.files import get_file_store
+
+    store = get_file_store()
+    try:
+        path = store.open_path(file_id)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="File not found") from exc
+    metadata = store.get_metadata(file_id) or {}
+    return FileResponse(
+        path,
+        media_type=metadata.get("media_type", "application/octet-stream"),
+        filename=metadata.get("name", file_id),
+    )
+
+
 # ------------------------------------------------------------------- oauth
 
 

@@ -1,7 +1,7 @@
 import type { Edge } from '@xyflow/react'
 import { useEffect, useState } from 'react'
 
-import { listMcpServerTools, testNode } from '../api'
+import { apiBase, listMcpServerTools, testNode } from '../api'
 
 import { Combobox } from './Combobox'
 
@@ -444,6 +444,7 @@ export function ConfigPanel({
           </h3>
           {nodeResult.error && <p className="error-text">{nodeResult.error}</p>}
           <pre>{JSON.stringify(nodeResult.output, null, 2)}</pre>
+          <FileRefLinks output={nodeResult.output} />
           <OutputPathPicker nodeId={node.id} output={nodeResult.output} />
         </div>
       )}
@@ -467,6 +468,52 @@ function flattenPaths(value: unknown, prefix: string, depth: number, out: string
     if (out.length >= 40) return
     flattenPaths(item, prefix ? `${prefix}.${key}` : key, depth + 1, out)
   }
+}
+
+interface FileRef {
+  id: string
+  name: string
+  media_type?: string
+  size?: number
+}
+
+function collectFileRefs(value: unknown, depth: number, out: FileRef[]): void {
+  if (depth > 5 || value === null || typeof value !== 'object' || out.length >= 10) return
+  const record = value as Record<string, unknown>
+  if (record.__genxai_file__ === true && typeof record.id === 'string') {
+    out.push({
+      id: record.id,
+      name: String(record.name ?? record.id),
+      media_type: record.media_type as string | undefined,
+      size: record.size as number | undefined,
+    })
+    return
+  }
+  for (const item of Array.isArray(value) ? value : Object.values(record)) {
+    collectFileRefs(item, depth + 1, out)
+  }
+}
+
+function FileRefLinks({ output }: { output: unknown }) {
+  const refs: FileRef[] = []
+  collectFileRefs(output, 0, refs)
+  if (refs.length === 0) return null
+  return (
+    <div className="file-ref-links">
+      {refs.map((ref) => (
+        <a
+          key={ref.id}
+          href={`${apiBase}/files/${ref.id}`}
+          target="_blank"
+          rel="noreferrer"
+          title={ref.media_type}
+        >
+          📎 {ref.name}
+          {ref.size != null && ` (${(ref.size / 1024).toFixed(1)} KB)`}
+        </a>
+      ))}
+    </div>
+  )
 }
 
 function OutputPathPicker({ nodeId, output }: { nodeId: string; output: unknown }) {

@@ -27,6 +27,11 @@ def register_studio_tools() -> int:
     from genxai.tools.builtin.data.xml_processor import XMLProcessorTool
     from genxai.tools.builtin.file.directory_scanner import DirectoryScannerTool
     from genxai.tools.builtin.file.file_reader import FileReaderTool
+    from genxai.tools.builtin.file.file_store_tools import (
+        FileContentTool,
+        FileDownloadTool,
+        FileWriteTool,
+    )
     from genxai.tools.builtin.file.pdf_parser import PDFParserTool
     from genxai.tools.builtin.web.api_caller import APICallerTool
     from genxai.tools.builtin.web.html_parser import HTMLParserTool
@@ -50,6 +55,9 @@ def register_studio_tools() -> int:
         XMLProcessorTool,
         DirectoryScannerTool,
         FileReaderTool,
+        FileDownloadTool,
+        FileWriteTool,
+        FileContentTool,
         PDFParserTool,
         APICallerTool,
         HTMLParserTool,
