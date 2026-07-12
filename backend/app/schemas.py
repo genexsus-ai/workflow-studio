@@ -60,6 +60,15 @@ class AutomationConfig(BaseModel):
     schedule_cron: str | None = None
     # IANA timezone the cron expression is evaluated in
     schedule_timezone: str = "UTC"
+    # Workflow to run when a run of this workflow fails (n8n error workflow)
+    error_workflow_id: str | None = None
+
+
+class WorkflowVersionInfo(BaseModel):
+    version: str
+    saved_at: str
+    name: str
+    node_count: int = 0
 
 
 class WorkflowDoc(BaseModel):

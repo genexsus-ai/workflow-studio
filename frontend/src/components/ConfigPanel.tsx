@@ -444,12 +444,58 @@ export function ConfigPanel({
           </h3>
           {nodeResult.error && <p className="error-text">{nodeResult.error}</p>}
           <pre>{JSON.stringify(nodeResult.output, null, 2)}</pre>
+          <OutputPathPicker nodeId={node.id} output={nodeResult.output} />
         </div>
       )}
       <button className="danger" onClick={() => onDeleteNode(node.id)}>
         Delete node
       </button>
     </aside>
+  )
+}
+
+function flattenPaths(value: unknown, prefix: string, depth: number, out: string[]): void {
+  if (out.length >= 40 || depth > 4 || value === null || typeof value !== 'object') {
+    if (prefix) out.push(prefix)
+    return
+  }
+  if (Array.isArray(value)) {
+    if (value.length > 0) flattenPaths(value[0], `${prefix}.0`, depth + 1, out)
+    return
+  }
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (out.length >= 40) return
+    flattenPaths(item, prefix ? `${prefix}.${key}` : key, depth + 1, out)
+  }
+}
+
+function OutputPathPicker({ nodeId, output }: { nodeId: string; output: unknown }) {
+  const [copied, setCopied] = useState<string | null>(null)
+  const paths: string[] = []
+  flattenPaths(output, '', 0, paths)
+  if (paths.length === 0) return null
+
+  return (
+    <details className="output-paths">
+      <summary>Reference these values downstream</summary>
+      {paths.map((path) => {
+        const expression = `{{ ${nodeId}.${path} }}`
+        return (
+          <button
+            key={path}
+            className="output-path"
+            title={`Copy ${expression}`}
+            onClick={() => {
+              navigator.clipboard.writeText(expression)
+              setCopied(path)
+              setTimeout(() => setCopied(null), 1200)
+            }}
+          >
+            {copied === path ? '✓ copied' : expression}
+          </button>
+        )
+      })}
+    </details>
   )
 }
 

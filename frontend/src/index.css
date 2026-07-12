@@ -571,6 +571,40 @@ button.danger {
   font-size: 12px;
 }
 
+.output-paths {
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+.output-paths summary {
+  cursor: pointer;
+  color: #475569;
+  font-weight: 600;
+}
+
+.output-path {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-top: 3px;
+  padding: 3px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  background: #f8fafc;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: #334155;
+  cursor: copy;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.output-path:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
 .credential-row-actions {
   display: flex;
   gap: 4px;

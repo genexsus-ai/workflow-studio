@@ -141,6 +141,32 @@ async def _sync_schedule(doc: WorkflowDoc) -> None:
         )
 
 
+@router.get("/workflows/{workflow_id}/versions")
+def list_workflow_versions(workflow_id: str) -> list[dict]:
+    if get_store().get(workflow_id) is None:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    return [info.model_dump() for info in get_store().list_versions(workflow_id)]
+
+
+@router.get("/workflows/{workflow_id}/versions/{version}", response_model=WorkflowDoc)
+def get_workflow_version(workflow_id: str, version: str) -> WorkflowDoc:
+    doc = get_store().get_version(workflow_id, version)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+    return doc
+
+
+@router.post(
+    "/workflows/{workflow_id}/versions/{version}/restore", response_model=WorkflowDoc
+)
+async def restore_workflow_version(workflow_id: str, version: str) -> WorkflowDoc:
+    doc = get_store().restore_version(workflow_id, version)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+    await _sync_schedule(doc)
+    return doc
+
+
 @router.delete("/workflows/{workflow_id}", status_code=204)
 def delete_workflow(workflow_id: str) -> None:
     if not get_store().delete(workflow_id):

@@ -1,11 +1,12 @@
 import { useState } from 'react'
 
 import { apiBase } from '../api'
-import type { AutomationConfig } from '../types'
+import type { AutomationConfig, WorkflowSummary } from '../types'
 
 interface AutomationPanelProps {
   workflowId: string | null
   automation: AutomationConfig
+  workflows: WorkflowSummary[]
   onChange: (config: AutomationConfig) => Promise<void>
   sharedMemory: boolean
   onSharedMemoryChange: (value: boolean) => void
@@ -14,6 +15,7 @@ interface AutomationPanelProps {
 export function AutomationPanel({
   workflowId,
   automation,
+  workflows,
   onChange,
   sharedMemory,
   onSharedMemoryChange,
@@ -195,6 +197,32 @@ export function AutomationPanel({
             </label>
           )}
         </>
+      )}
+
+      <label className="field">
+        <span>On failure, run</span>
+        <select
+          disabled={busy}
+          value={automation.error_workflow_id ?? ''}
+          onChange={(event) =>
+            apply({ ...automation, error_workflow_id: event.target.value || null })
+          }
+        >
+          <option value="">— nothing —</option>
+          {workflows
+            .filter((workflow) => workflow.id !== workflowId)
+            .map((workflow) => (
+              <option key={workflow.id} value={workflow.id}>
+                {workflow.name}
+              </option>
+            ))}
+        </select>
+      </label>
+      {automation.error_workflow_id && (
+        <p className="config-subtitle">
+          The handler receives {'{ error, failed_run_id, workflow_name, failed_nodes, input }'} as
+          its run input.
+        </p>
       )}
     </details>
   )

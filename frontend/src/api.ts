@@ -11,6 +11,7 @@ import type {
   ValidationResult,
   WorkflowDoc,
   WorkflowSummary,
+  WorkflowVersionInfo,
 } from './types'
 
 const API_BASE: string =
@@ -226,6 +227,14 @@ export const apiBase = API
 
 export const listCredentials = () =>
   fetch(`${API}/credentials`).then((r) => json<CredentialSummary[]>(r))
+
+export const listWorkflowVersions = (id: string) =>
+  fetch(`${API}/workflows/${id}/versions`).then((r) => json<WorkflowVersionInfo[]>(r))
+
+export const restoreWorkflowVersion = (id: string, version: string) =>
+  fetch(`${API}/workflows/${id}/versions/${version}/restore`, { method: 'POST' }).then(
+    (r) => json<WorkflowDoc>(r),
+  )
 
 export const listOAuthProviders = () =>
   fetch(`${API}/oauth/providers`).then((r) => json<OAuthProvidersResponse>(r))

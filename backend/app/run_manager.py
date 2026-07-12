@@ -41,11 +41,13 @@ class _Job:
         input_data: dict[str, Any],
         model_override: str | None,
         resume_results: dict[str, Any] | None = None,
+        trigger: str = "manual",
     ):
         self.run_id = run_id
         self.doc = doc
         self.input_data = input_data
         self.model_override = model_override
+        self.trigger = trigger
         # Prior successful node outputs to replay instead of re-executing
         self.resume_results = resume_results
         self.cancelled = False
@@ -143,7 +145,12 @@ class RunManager:
             },
         )
         self._jobs[run_id] = _Job(
-            run_id, doc, input_data, model_override, resume_results=resume_results
+            run_id,
+            doc,
+            input_data,
+            model_override,
+            resume_results=resume_results,
+            trigger=trigger,
         )
         self._queue.put_nowait(run_id)
         return run_id
@@ -389,12 +396,63 @@ class RunManager:
         self._publish(job, {"event": terminal, "data": {**result, "run_id": job.run_id}})
         job.done = True
         self._subscribers.pop(job.run_id, None)
+        if status == "error":
+            self._fire_error_workflow(job, result.get("error"))
 
     def _finish(self, job: _Job, status: str, error: str | None) -> None:
         get_execution_store().update(job.run_id, status=status, error=error, completed=True)
         self._publish(job, {"event": "error", "data": {"run_id": job.run_id, "status": status, "error": error}})
         job.done = True
         self._subscribers.pop(job.run_id, None)
+        if status == "error":
+            self._fire_error_workflow(job, error)
+
+    def _fire_error_workflow(self, job: _Job, error: Any) -> None:
+        """Trigger the workflow registered as this workflow's error handler."""
+        handler_id = job.doc.automation.error_workflow_id
+        if not handler_id:
+            return
+        if job.trigger.startswith("error:"):
+            # An error handler failing must not cascade into more handlers
+            logger.warning(
+                "Error workflow for run %s failed; not chaining another handler",
+                job.run_id,
+            )
+            return
+        from app.api.routes import get_store
+
+        handler = get_store().get(handler_id)
+        if handler is None:
+            logger.error(
+                "Error workflow '%s' for '%s' not found", handler_id, job.doc.name
+            )
+            return
+        record = get_execution_store().get(job.run_id)
+        node_results = ((record.result if record else None) or {}).get(
+            "node_results"
+        ) or {}
+        failed_nodes = [
+            node_id
+            for node_id, entry in node_results.items()
+            if entry.get("status") == "failed"
+        ]
+        payload = {
+            "error": str(error or "unknown error"),
+            "failed_run_id": job.run_id,
+            "workflow_id": job.doc.id,
+            "workflow_name": job.doc.name,
+            "failed_nodes": failed_nodes,
+            "input": job.input_data,
+        }
+        error_run_id = self.submit(
+            handler, payload, trigger=f"error:{job.run_id[:8]}"
+        )
+        logger.info(
+            "Run %s failed; error workflow '%s' submitted as %s",
+            job.run_id,
+            handler.name,
+            error_run_id,
+        )
 
 
 _manager: RunManager | None = None

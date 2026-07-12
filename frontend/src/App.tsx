@@ -23,6 +23,7 @@ import { GenerateDialog } from './components/GenerateDialog'
 import { McpServersPanel } from './components/McpServersPanel'
 import { RunPanel } from './components/RunPanel'
 import { RunsPanel } from './components/RunsPanel'
+import { VersionsPanel } from './components/VersionsPanel'
 import { Toolbar } from './components/Toolbar'
 import { EXPANDABLE_PATTERNS } from './lib/flowExpansion'
 import { ATTACH_EDGE_STYLE, docToFlow, flowToDoc, nextNodeId, type StudioNode } from './lib/translate'
@@ -56,6 +57,7 @@ export default function App() {
   const [automation, setAutomation] = useState<AutomationConfig>(defaultAutomation)
   const [sharedMemory, setSharedMemory] = useState(false)
   const [runsRefreshKey, setRunsRefreshKey] = useState(0)
+  const [saveCount, setSaveCount] = useState(0)
   const [credentials, setCredentials] = useState<CredentialSummary[]>([])
   const [mcpServers, setMcpServers] = useState<McpServerSummary[]>([])
   const [runError, setRunError] = useState<string | null>(null)
@@ -453,6 +455,7 @@ export default function App() {
       setCurrentId(saved.id ?? null)
       setDirty(false)
       setBanner(`Saved "${saved.name}"`)
+      setSaveCount((count) => count + 1)
       refreshWorkflows()
       if (lastGenerationId) {
         // Saving a generated draft marks it accepted so future generations
@@ -738,11 +741,20 @@ export default function App() {
             <AutomationPanel
               workflowId={currentId}
               automation={automation}
+              workflows={workflows}
               onChange={onAutomationChange}
               sharedMemory={sharedMemory}
               onSharedMemoryChange={(value) => {
                 setSharedMemory(value)
                 setDirty(true)
+              }}
+            />
+            <VersionsPanel
+              workflowId={currentId}
+              refreshKey={saveCount}
+              onRestored={(id) => {
+                void onLoad(id)
+                setBanner('Version restored')
               }}
             />
             <RunsPanel refreshKey={runsRefreshKey} />

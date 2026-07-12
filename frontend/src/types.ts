@@ -167,6 +167,14 @@ export interface AutomationConfig {
   interval_seconds: number
   schedule_cron?: string | null
   schedule_timezone?: string
+  error_workflow_id?: string | null
+}
+
+export interface WorkflowVersionInfo {
+  version: string
+  saved_at: string
+  name: string
+  node_count: number
 }
 
 export interface RunRecord {
