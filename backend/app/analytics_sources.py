@@ -543,6 +543,57 @@ class GSheetAdapter:
         )
 
 
+# ----------------------------------------------------------------------- s3
+
+_S3_CACHE_TTL = 60.0
+_s3_cache: dict[str, tuple[float, str]] = {}
+
+
+def fetch_s3_object(credential: str, bucket: str, key: str) -> bytes:
+    """Download an object with a stored S3 credential (isolated for tests)."""
+    import boto3
+
+    entry = get_credential_store().get(credential)
+    if entry is None:
+        raise LookupError(f"Credential '{credential}' not found")
+    config = entry.config
+    client = boto3.client(
+        "s3",
+        aws_access_key_id=str(config.get("access_key_id") or ""),
+        aws_secret_access_key=str(config.get("secret_access_key") or ""),
+        region_name=str(config.get("region") or "us-east-1"),
+        endpoint_url=str(config.get("endpoint_url") or "") or None,
+    )
+    try:
+        response = client.get_object(Bucket=bucket, Key=key)
+        return response["Body"].read(60 * 1024 * 1024)
+    finally:
+        client.close()
+
+
+def s3_file_adapter(
+    credential: str, bucket: str, key: str, format_: str, sheet: str | None
+) -> "FileAdapter":
+    """Fetch an S3 object into the file store and serve it as a file source.
+
+    Content-addressing does the caching: an unchanged object maps to the
+    same file id (already parsed); a changed object becomes a new id. The
+    TTL only bounds how often we re-download to check.
+    """
+    import time
+
+    cache_key = f"{credential}:{bucket}:{key}"
+    cached = _s3_cache.get(cache_key)
+    if cached and time.time() - cached[0] < _S3_CACHE_TTL:
+        file_id = cached[1]
+    else:
+        data = fetch_s3_object(credential, bucket, key)
+        ref = get_file_store().save_bytes(data, name=key.rsplit("/", 1)[-1] or key)
+        file_id = ref["id"]
+        _s3_cache[cache_key] = (time.time(), file_id)
+    return FileAdapter(file_id, format_, sheet)
+
+
 # ----------------------------------------------------------- duckdb federation
 
 MAX_FEDERATED_ROWS_PER_SOURCE = 50_000
@@ -709,6 +760,14 @@ def get_adapter(
         )
     if kind == "duckdb":
         return FederatedAdapter(config["sql"], config.get("sources") or {})
+    if kind == "s3":
+        return s3_file_adapter(
+            config["credential"],
+            config["bucket"],
+            config["key"],
+            config.get("format", "csv"),
+            config.get("sheet"),
+        )
     raise ValueError(f"Unknown source kind '{kind}'")
 
 

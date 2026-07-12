@@ -32,6 +32,7 @@ const KIND_META: Record<string, { icon: string; label: string }> = {
   sql: { icon: '🐘', label: 'Databases' },
   file: { icon: '📄', label: 'Files' },
   gsheet: { icon: '📗', label: 'Google Sheets' },
+  s3: { icon: '🪣', label: 'S3' },
   duckdb: { icon: '🦆', label: 'Federated' },
 }
 
@@ -107,8 +108,10 @@ export function DatasetsView() {
                         ? String(source.config.file_name ?? source.config.format ?? 'file')
                         : source.kind === 'gsheet'
                           ? String(source.config.range ?? 'sheet')
-                          : source.kind === 'duckdb'
-                            ? 'federated query'
+                          : source.kind === 's3'
+                            ? `s3://${String(source.config.bucket ?? '')}/${String(source.config.key ?? '')}`
+                            : source.kind === 'duckdb'
+                              ? 'federated query'
                             : `${source.rows ?? 0} rows${
                                 source.last_written_at
                                   ? ` · ${new Date(source.last_written_at).toLocaleDateString()}`
@@ -159,7 +162,7 @@ function AddSourceDialog({
   onClose: () => void
   onCreated: (id: string) => void
 }) {
-  const [mode, setMode] = useState<'sql' | 'file' | 'gsheet' | 'duckdb'>('sql')
+  const [mode, setMode] = useState<'sql' | 'file' | 'gsheet' | 'duckdb' | 's3'>('sql')
   const [sqlMode, setSqlMode] = useState<'table' | 'custom'>('table')
   const [customSql, setCustomSql] = useState('')
   const [credentials, setCredentials] = useState<CredentialSummary[]>([])
@@ -181,13 +184,21 @@ function AddSourceDialog({
   const [federatedSql, setFederatedSql] = useState('')
   const [federatedPicks, setFederatedPicks] = useState<Record<string, string>>({})
   const [googleCredentials, setGoogleCredentials] = useState<CredentialSummary[]>([])
+  const [s3Credentials, setS3Credentials] = useState<CredentialSummary[]>([])
+  const [s3Credential, setS3Credential] = useState('')
+  const [s3Bucket, setS3Bucket] = useState('')
+  const [s3Key, setS3Key] = useState('')
 
   useEffect(() => {
     listCredentials()
-      .then((all) =>
-        setGoogleCredentials(all.filter((c) => c.connector_type === 'google_workspace')),
-      )
-      .catch(() => setGoogleCredentials([]))
+      .then((all) => {
+        setGoogleCredentials(all.filter((c) => c.connector_type === 'google_workspace'))
+        setS3Credentials(all.filter((c) => c.connector_type === 's3'))
+      })
+      .catch(() => {
+        setGoogleCredentials([])
+        setS3Credentials([])
+      })
   }, [])
 
   useEffect(() => {
@@ -239,6 +250,23 @@ function AddSourceDialog({
       setUploaded({ id: result.file.id, name: result.file.name, sheets: result.sheets })
       setSheet(result.sheets?.[0] ?? '')
       if (!name) setName(result.file.name.replace(/\.(xlsx|csv)$/i, ''))
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const submitS3 = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const created = await createSource(name || s3Key.split('/').pop() || 'S3 object', 's3', {
+        credential: s3Credential,
+        bucket: s3Bucket,
+        key: s3Key,
+      })
+      onCreated(created.id)
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -313,6 +341,9 @@ function AddSourceDialog({
           </button>
           <button className={mode === 'gsheet' ? 'active' : ''} onClick={() => setMode('gsheet')}>
             📗 Sheet
+          </button>
+          <button className={mode === 's3' ? 'active' : ''} onClick={() => setMode('s3')}>
+            🪣 S3
           </button>
           <button className={mode === 'duckdb' ? 'active' : ''} onClick={() => setMode('duckdb')}>
             🦆 Federated
@@ -469,6 +500,44 @@ function AddSourceDialog({
             </>
           ))}
 
+        {mode === 's3' &&
+          (s3Credentials.length === 0 ? (
+            <p className="config-subtitle">
+              No S3 credentials yet — add an AWS S3 credential in the
+              Credentials panel first.
+            </p>
+          ) : (
+            <>
+              <label className="field">
+                <span>Credential</span>
+                <select value={s3Credential} onChange={(e) => setS3Credential(e.target.value)}>
+                  <option value="">Choose…</option>
+                  {s3Credentials.map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Bucket</span>
+                <input value={s3Bucket} onChange={(e) => setS3Bucket(e.target.value.trim())} />
+              </label>
+              <label className="field">
+                <span>Object key (.csv or .xlsx)</span>
+                <input
+                  value={s3Key}
+                  placeholder="reports/q2.xlsx"
+                  onChange={(e) => setS3Key(e.target.value.trim())}
+                />
+              </label>
+              <label className="field">
+                <span>Source name</span>
+                <input value={name} onChange={(e) => setName(e.target.value)} />
+              </label>
+            </>
+          ))}
+
         {mode === 'duckdb' && (
           <>
             <p className="config-subtitle">
@@ -521,7 +590,15 @@ function AddSourceDialog({
 
         {error && <p className="error-text">{error}</p>}
         <div className="credential-form-actions">
-          {mode === 'gsheet' ? (
+          {mode === 's3' ? (
+            <button
+              className="primary-small"
+              disabled={busy || !s3Credential || !s3Bucket || !s3Key}
+              onClick={submitS3}
+            >
+              {busy ? 'Connecting…' : 'Connect'}
+            </button>
+          ) : mode === 'gsheet' ? (
             <button
               className="primary-small"
               disabled={busy || !gsheetCredential || !spreadsheetId || !sheetRange}

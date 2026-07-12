@@ -709,8 +709,44 @@ def create_analytics_source(payload: SourceCreate) -> dict:
             name, "duckdb", {"sql": sql, "sources": sources}
         )
 
+    if payload.kind == "s3":
+        from app.analytics_sources import s3_file_adapter
+
+        credential = str(payload.config.get("credential") or "")
+        bucket = str(payload.config.get("bucket") or "")
+        key = str(payload.config.get("key") or "")
+        format_ = str(payload.config.get("format") or "")
+        if not format_:
+            format_ = "xlsx" if key.lower().endswith(".xlsx") else "csv"
+        sheet = payload.config.get("sheet") or None
+        if not credential or not bucket or not key or format_ not in ("xlsx", "csv"):
+            raise HTTPException(
+                status_code=422,
+                detail="config.credential, config.bucket, config.key and a csv/xlsx key required",
+            )
+        try:
+            adapter = s3_file_adapter(credential, bucket, key, format_, sheet)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Cannot read s3://{bucket}/{key}: {exc}"
+            ) from exc
+        if adapter.rows(1, 0)["total"] == 0:
+            raise HTTPException(status_code=422, detail="Object contains no rows")
+        config = {
+            "credential": credential,
+            "bucket": bucket,
+            "key": key,
+            "format": format_,
+        }
+        if sheet:
+            config["sheet"] = str(sheet)
+        return get_source_registry().create(name, "s3", config)
+
     raise HTTPException(
-        status_code=422, detail="kind must be 'sql', 'file', 'gsheet', or 'duckdb'"
+        status_code=422,
+        detail="kind must be 'sql', 'file', 'gsheet', 'duckdb', or 's3'",
     )
 
 

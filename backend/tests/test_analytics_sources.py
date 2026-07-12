@@ -506,3 +506,65 @@ def test_gsheet_requires_existing_credential(client):
         },
     )
     assert response.status_code == 404
+
+
+def test_s3_source_with_stubbed_fetch(client, monkeypatch):
+    import app.analytics_sources as sources_module
+
+    client.post(
+        "/api/v1/credentials",
+        json={
+            "name": "my-s3",
+            "connector_type": "s3",
+            "config": {"access_key_id": "ak", "secret_access_key": "sk", "region": "us-east-1"},
+        },
+    )
+
+    def fake_fetch(credential, bucket, key):
+        assert credential == "my-s3"
+        assert (bucket, key) == ("reports", "q2.csv")
+        return b"region,total\neast,10\nwest,5\n"
+
+    monkeypatch.setattr(sources_module, "fetch_s3_object", fake_fetch)
+    sources_module._s3_cache.clear()
+
+    created = client.post(
+        "/api/v1/analytics/sources",
+        json={
+            "name": "Q2 (S3)",
+            "kind": "s3",
+            "config": {"credential": "my-s3", "bucket": "reports", "key": "q2.csv"},
+        },
+    )
+    assert created.status_code == 201, created.text
+    source_id = created.json()["id"]
+    assert created.json()["config"]["format"] == "csv"  # inferred from key
+
+    rows = client.get(f"/api/v1/analytics/sources/{source_id}/rows").json()
+    assert rows["total"] == 2
+    assert rows["rows"][0] == {"region": "east", "total": 10}
+
+    aggregate = client.get(
+        f"/api/v1/analytics/sources/{source_id}/aggregate?metric=sum&field=total"
+    ).json()
+    assert aggregate[0]["value"] == 15.0
+
+
+def test_s3_source_requires_existing_credential(client):
+    response = client.post(
+        "/api/v1/analytics/sources",
+        json={
+            "name": "X",
+            "kind": "s3",
+            "config": {"credential": "ghost", "bucket": "b", "key": "k.csv"},
+        },
+    )
+    assert response.status_code == 404
+
+
+def test_s3_connector_in_catalog(client):
+    palette = client.get("/api/v1/palette").json()
+    s3 = next(c for c in palette["connectors"] if c["type"] == "s3")
+    assert {"list_objects", "get_object", "put_object"} <= set(s3["actions"])
+    field_names = {f["name"] for f in s3["credential_fields"]}
+    assert {"access_key_id", "secret_access_key", "region"} <= field_names

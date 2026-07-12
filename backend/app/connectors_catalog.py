@@ -19,6 +19,7 @@ from genxai.connectors import (
     JiraConnector,
     NotionConnector,
     PostgresConnector,
+    S3Connector,
     SlackConnector,
 )
 from genxai.tools.base import Tool, ToolCategory, ToolMetadata, ToolParameter
@@ -31,6 +32,7 @@ CONNECTOR_CLASSES: dict[str, type[Connector]] = {
     "notion": NotionConnector,
     "google_workspace": GoogleWorkspaceConnector,
     "postgres": PostgresConnector,
+    "s3": S3Connector,
 }
 
 CONNECTOR_CATALOG: list[dict[str, Any]] = [
@@ -85,6 +87,44 @@ CONNECTOR_CATALOG: list[dict[str, Any]] = [
             "list_channels": {
                 "description": "List channels",
                 "params": [{"name": "types", "required": False, "example": "public_channel"}],
+            },
+        },
+    },
+    {
+        "type": "s3",
+        "label": "AWS S3",
+        "icon": "🪣",
+        "color": "#e25444",
+        "credential_fields": [
+            {"name": "access_key_id", "example": "AKIA…"},
+            {"name": "secret_access_key", "secret": True},
+            {"name": "region", "example": "us-east-1"},
+            {"name": "endpoint_url", "example": "leave empty for AWS; set for MinIO/R2"},
+        ],
+        "actions": {
+            "list_objects": {
+                "description": "List objects in a bucket",
+                "params": [
+                    {"name": "bucket", "required": True},
+                    {"name": "prefix", "required": False, "example": "reports/"},
+                    {"name": "max_keys", "required": False, "example": 100},
+                ],
+            },
+            "get_object": {
+                "description": "Download an object into the file store (returns a file ref)",
+                "params": [
+                    {"name": "bucket", "required": True},
+                    {"name": "key", "required": True, "example": "reports/q2.xlsx"},
+                ],
+            },
+            "put_object": {
+                "description": "Upload a file reference or text content to a key",
+                "params": [
+                    {"name": "bucket", "required": True},
+                    {"name": "key", "required": True},
+                    {"name": "file", "required": False, "example": "{{ export.data.file }}"},
+                    {"name": "content", "required": False},
+                ],
             },
         },
     },

@@ -275,7 +275,7 @@ export interface InsightsData {
 export interface SourceSummary {
   id: string
   name: string
-  kind: 'dataset' | 'sql' | 'file' | 'gsheet' | 'duckdb'
+  kind: 'dataset' | 'sql' | 'file' | 'gsheet' | 'duckdb' | 's3'
   config: Record<string, unknown>
   rows?: number
   last_written_at?: string | null
