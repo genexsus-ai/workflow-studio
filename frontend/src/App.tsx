@@ -44,6 +44,7 @@ export default function App() {
   const [lastGenerationId, setLastGenerationId] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
   const [activeApp, setActiveApp] = useState<AppId>('workflow')
+  const [insightsOpen, setInsightsOpen] = useState(false)
   const [pinnedInput, setPinnedInput] = useState<Record<string, unknown> | null>(null)
   const [runEvents, setRunEvents] = useState<RunEvent[]>([])
   const [nodeResults, setNodeResults] = useState<Record<string, NodeResult>>({})
@@ -632,17 +633,14 @@ export default function App() {
     <ReactFlowProvider>
       <div className="app-shell">
         <AppSidebar active={activeApp} onSelect={setActiveApp} />
-        {activeApp === 'analytics' ? (
-          <div className="app">
-            <InsightsView />
-          </div>
-        ) : activeApp !== 'workflow' ? (
+        {activeApp !== 'workflow' ? (
           <div className="app app-placeholder">
             <div className="app-placeholder-body">
-              <h1>🧪 Data Science</h1>
+              <h1>{activeApp === 'analytics' ? '📊 Analytics' : '🧪 Data Science'}</h1>
               <p>
-                This workspace is on the roadmap. Workflow Studio is the first
-                GenXAI app — more are coming.
+                {activeApp === 'analytics'
+                  ? 'Dataset analytics — insights from the data your workflows collect — is in development. Run analytics for the studio itself lives under 📈 Insights in Workflow Studio.'
+                  : 'This workspace is on the roadmap. Workflow Studio is the first GenXAI app — more are coming.'}
               </p>
               <button onClick={() => setActiveApp('workflow')}>
                 ← Back to Workflow Studio
@@ -668,6 +666,8 @@ export default function App() {
           onImportYaml={onImportYaml}
           onRun={() => setRunOpen(true)}
           onGenerate={() => setGenerateOpen(true)}
+          insightsOpen={insightsOpen}
+          onToggleInsights={() => setInsightsOpen((open) => !open)}
         />
         <GenerateDialog
           open={generateOpen}
@@ -680,6 +680,11 @@ export default function App() {
             {banner}
           </div>
         )}
+        {insightsOpen ? (
+          <div className="workspace">
+            <InsightsView />
+          </div>
+        ) : (
         <div className="workspace">
           <Canvas
             nodes={nodes}
@@ -765,6 +770,7 @@ export default function App() {
             <RunsPanel refreshKey={runsRefreshKey} />
           </div>
         </div>
+        )}
       </div>
         )}
       </div>

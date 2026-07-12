@@ -16,6 +16,8 @@ interface ToolbarProps {
   onRun: () => void
   onImportYaml: (yamlText: string) => void
   onGenerate: () => void
+  insightsOpen: boolean
+  onToggleInsights: () => void
 }
 
 export function Toolbar({
@@ -32,6 +34,8 @@ export function Toolbar({
   onRun,
   onImportYaml,
   onGenerate,
+  insightsOpen,
+  onToggleInsights,
 }: ToolbarProps) {
   const importFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -73,6 +77,13 @@ export function Toolbar({
             Delete
           </button>
         )}
+        <button
+          onClick={onToggleInsights}
+          title="Run analytics for this studio"
+          style={insightsOpen ? { fontWeight: 700 } : undefined}
+        >
+          📈 Insights
+        </button>
         <button className="primary" onClick={onRun} disabled={running}>
           {running ? 'Running…' : '▶ Run'}
         </button>

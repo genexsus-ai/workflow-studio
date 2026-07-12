@@ -11,7 +11,7 @@ interface AppEntry {
 
 const APPS: AppEntry[] = [
   { id: 'workflow', icon: '🧩', label: 'Workflow Studio', available: true },
-  { id: 'analytics', icon: '📊', label: 'Analytics', available: true },
+  { id: 'analytics', icon: '📊', label: 'Analytics', available: false },
   { id: 'datascience', icon: '🧪', label: 'Data Science', available: false },
 ]
 
