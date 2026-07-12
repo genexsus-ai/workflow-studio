@@ -3,7 +3,7 @@
 import json
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 from app.automation import (
@@ -597,32 +597,65 @@ def list_analytics_sources() -> list[dict]:
 
 @router.post("/analytics/sources", status_code=201)
 def create_analytics_source(payload: SourceCreate) -> dict:
-    from app.analytics_sources import SQLAdapter, get_source_registry
+    from app.analytics_sources import FileAdapter, SQLAdapter, get_source_registry
 
-    if payload.kind != "sql":
-        raise HTTPException(
-            status_code=422, detail="Only 'sql' sources can be registered (P1)"
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name required")
+
+    if payload.kind == "sql":
+        credential = str(payload.config.get("credential") or "")
+        table = str(payload.config.get("table") or "")
+        if not credential or not table:
+            raise HTTPException(
+                status_code=422, detail="config.credential and config.table required"
+            )
+        # Fail fast: adapter construction + a schema probe validate everything
+        try:
+            adapter = SQLAdapter(credential, table)
+            schema = adapter.schema()
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Cannot read table '{table}': {exc}"
+            ) from exc
+        if not schema:
+            raise HTTPException(
+                status_code=422, detail=f"Table '{table}' has no columns"
+            )
+        return get_source_registry().create(
+            name, "sql", {"credential": credential, "table": table}
         )
-    credential = str(payload.config.get("credential") or "")
-    table = str(payload.config.get("table") or "")
-    if not payload.name.strip() or not credential or not table:
-        raise HTTPException(
-            status_code=422, detail="name, config.credential and config.table required"
-        )
-    # Fail fast: adapter construction + a schema probe validate everything
-    try:
-        adapter = SQLAdapter(credential, table)
-        schema = adapter.schema()
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(
-            status_code=422, detail=f"Cannot read table '{table}': {exc}"
-        ) from exc
-    if not schema:
-        raise HTTPException(status_code=422, detail=f"Table '{table}' has no columns")
-    return get_source_registry().create(
-        payload.name.strip(), "sql", {"credential": credential, "table": table}
+
+    if payload.kind == "file":
+        file_id = str(payload.config.get("file_id") or "")
+        format_ = str(payload.config.get("format") or "")
+        sheet = payload.config.get("sheet") or None
+        if not file_id or format_ not in ("xlsx", "csv"):
+            raise HTTPException(
+                status_code=422,
+                detail="config.file_id and config.format (xlsx|csv) required",
+            )
+        try:
+            adapter = FileAdapter(file_id, format_, sheet)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Cannot parse file: {exc}"
+            ) from exc
+        if adapter.rows(1, 0)["total"] == 0:
+            raise HTTPException(status_code=422, detail="File contains no rows")
+        config = {"file_id": file_id, "format": format_}
+        if sheet:
+            config["sheet"] = str(sheet)
+        if payload.config.get("file_name"):
+            config["file_name"] = str(payload.config["file_name"])
+        return get_source_registry().create(name, "file", config)
+
+    raise HTTPException(
+        status_code=422, detail="kind must be 'sql' or 'file'"
     )
 
 
@@ -699,6 +732,34 @@ def get_insights(days: int = 14) -> dict:
     from app.insights import compute_insights
 
     return compute_insights(days=max(1, min(days, 90)))
+
+
+@router.post("/files/upload", status_code=201)
+async def upload_file(file: "UploadFile") -> dict:
+    """Browser upload into the file store; xlsx uploads also report sheets."""
+    from genxai.core.files import get_file_store
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=422, detail="Empty file")
+    if len(data) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=422, detail="File larger than 50 MB")
+    name = file.filename or "upload"
+    ref = get_file_store().save_bytes(
+        data, name=name, media_type=file.content_type or None
+    )
+
+    sheets: list[str] | None = None
+    if name.lower().endswith(".xlsx"):
+        from app.analytics_sources import list_workbook_sheets
+
+        try:
+            sheets = list_workbook_sheets(ref["id"])
+        except Exception as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Not a readable .xlsx workbook: {exc}"
+            ) from exc
+    return {"file": ref, "sheets": sheets}
 
 
 @router.get("/files/{file_id}")

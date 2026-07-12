@@ -272,6 +272,14 @@ export const analyzeSource = (id: string, question?: string) =>
     body: JSON.stringify({ question: question || null }),
   }).then((r) => json<DatasetAnalysis>(r))
 
+export const uploadFile = (file: File) => {
+  const form = new FormData()
+  form.append('file', file)
+  return fetch(`${API}/files/upload`, { method: 'POST', body: form }).then((r) =>
+    json<{ file: { id: string; name: string }; sheets: string[] | null }>(r),
+  )
+}
+
 export const listCredentialTables = (credential: string) =>
   fetch(`${API}/analytics/credentials/${credential}/tables`).then((r) =>
     json<{ tables: string[] }>(r),

@@ -131,3 +131,116 @@ def test_analyze_over_sql_source(client, tmp_path, mock_llm):
     assert response.status_code == 200
     assert response.json()["insight"] == "stub response"
     assert response.json()["total_rows"] == 3
+
+
+# --------------------------------------------------------------- file sources
+
+
+def _xlsx_bytes(rows: list[dict], sheet: str = "Sheet1") -> bytes:
+    import io
+
+    import openpyxl
+
+    workbook = openpyxl.Workbook()
+    ws = workbook.active
+    ws.title = sheet
+    columns = list(rows[0].keys())
+    ws.append(columns)
+    for row in rows:
+        ws.append([row.get(c) for c in columns])
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def test_upload_csv_and_register_source(client):
+    csv_data = b"region,total\neast,10\neast,30\nwest,5\n"
+    uploaded = client.post(
+        "/api/v1/files/upload",
+        files={"file": ("orders.csv", csv_data, "text/csv")},
+    )
+    assert uploaded.status_code == 201
+    body = uploaded.json()
+    assert body["sheets"] is None
+
+    created = client.post(
+        "/api/v1/analytics/sources",
+        json={
+            "name": "Orders CSV",
+            "kind": "file",
+            "config": {"file_id": body["file"]["id"], "format": "csv"},
+        },
+    )
+    assert created.status_code == 201
+    source_id = created.json()["id"]
+
+    schema = client.get(f"/api/v1/analytics/sources/{source_id}/schema").json()
+    assert {"name": "total", "type": "number"} in schema  # CSV numerics coerced
+
+    rows = client.get(f"/api/v1/analytics/sources/{source_id}/rows").json()
+    assert rows["total"] == 3
+    assert rows["rows"][0] == {"region": "east", "total": 10}
+
+    aggregate = client.get(
+        f"/api/v1/analytics/sources/{source_id}/aggregate"
+        "?metric=avg&field=total&group_by=region"
+    ).json()
+    assert {e["group"]: e["value"] for e in aggregate} == {"east": 20.0, "west": 5.0}
+
+
+def test_upload_xlsx_reports_sheets_and_registers(client):
+    data = _xlsx_bytes(
+        [{"item": "a", "qty": 2}, {"item": "b", "qty": 7}], sheet="Sales"
+    )
+    uploaded = client.post(
+        "/api/v1/files/upload",
+        files={
+            "file": (
+                "q2.xlsx",
+                data,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    ).json()
+    assert uploaded["sheets"] == ["Sales"]
+
+    created = client.post(
+        "/api/v1/analytics/sources",
+        json={
+            "name": "Q2",
+            "kind": "file",
+            "config": {
+                "file_id": uploaded["file"]["id"],
+                "format": "xlsx",
+                "sheet": "Sales",
+            },
+        },
+    ).json()
+
+    rows = client.get(f"/api/v1/analytics/sources/{created['id']}/rows").json()
+    assert rows["total"] == 2
+    assert rows["rows"][1] == {"item": "b", "qty": 7}
+
+    aggregate = client.get(
+        f"/api/v1/analytics/sources/{created['id']}/aggregate?metric=sum&field=qty"
+    ).json()
+    assert aggregate[0]["value"] == 9.0
+
+
+def test_file_source_validation(client):
+    empty = client.post(
+        "/api/v1/files/upload", files={"file": ("empty.csv", b"", "text/csv")}
+    )
+    assert empty.status_code == 422
+
+    missing = client.post(
+        "/api/v1/analytics/sources",
+        json={"name": "X", "kind": "file", "config": {"file_id": "a" * 64, "format": "csv"}},
+    )
+    assert missing.status_code == 404
+
+    bad_format = client.post(
+        "/api/v1/analytics/sources",
+        json={"name": "X", "kind": "file", "config": {"file_id": "a" * 64, "format": "pdf"}},
+    )
+    assert bad_format.status_code == 422

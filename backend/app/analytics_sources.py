@@ -19,7 +19,8 @@ from typing import Any
 
 from app.config import get_settings
 from app.credentials import get_credential_store
-from genxai.core.datasets import ALLOWED_METRICS, get_dataset_store
+from genxai.core.datasets import ALLOWED_METRICS, aggregate_rows, get_dataset_store
+from genxai.core.files import get_file_store
 
 logger = logging.getLogger(__name__)
 
@@ -151,22 +152,7 @@ class DatasetAdapter:
 
     def schema(self) -> list[dict[str, str]]:
         sample = get_dataset_store().rows(self.dataset, limit=50)["rows"]
-        types: dict[str, str] = {}
-        for row in sample:
-            for key, value in row.items():
-                if key.startswith("_"):
-                    continue
-                if isinstance(value, bool):
-                    inferred = "boolean"
-                elif isinstance(value, (int, float)):
-                    inferred = "number"
-                elif isinstance(value, (dict, list)):
-                    inferred = "object"
-                else:
-                    inferred = "string"
-                if key not in types or types[key] == "string":
-                    types[key] = inferred
-        return [{"name": name, "type": kind} for name, kind in types.items()]
+        return _infer_schema(sample)
 
     def rows(self, limit: int, offset: int) -> dict[str, Any]:
         return get_dataset_store().rows(self.dataset, limit=limit, offset=offset)
@@ -283,6 +269,147 @@ class SQLAdapter:
             engine.dispose()
 
 
+MAX_FILE_ROWS = 50_000
+_file_cache: dict[str, list[dict[str, Any]]] = {}
+_FILE_CACHE_MAX = 8
+
+
+def _coerce(value: str) -> Any:
+    """CSV cells are all strings; give numbers their type back."""
+    text = value.strip()
+    if text == "":
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        try:
+            return float(text)
+        except ValueError:
+            return value
+
+
+def parse_file_rows(
+    file_id: str, format_: str, sheet: str | None = None
+) -> list[dict[str, Any]]:
+    """Parse an xlsx/csv file from the file store into rows (cached by content)."""
+    cache_key = f"{file_id}:{format_}:{sheet or ''}"
+    if cache_key in _file_cache:
+        return _file_cache[cache_key]
+
+    data = get_file_store().read_bytes(file_id)
+    rows: list[dict[str, Any]] = []
+    if format_ == "csv":
+        import csv
+        import io
+
+        reader = csv.DictReader(io.StringIO(data.decode("utf-8-sig", errors="replace")))
+        for record in reader:
+            if len(rows) >= MAX_FILE_ROWS:
+                break
+            rows.append(
+                {key: _coerce(value) if isinstance(value, str) else value
+                 for key, value in record.items() if key is not None}
+            )
+    elif format_ == "xlsx":
+        import io
+
+        import openpyxl
+
+        workbook = openpyxl.load_workbook(
+            io.BytesIO(data), read_only=True, data_only=True
+        )
+        try:
+            names = workbook.sheetnames
+            if sheet and sheet not in names:
+                raise ValueError(f"Sheet {sheet!r} not found — workbook has {names}")
+            ws = workbook[sheet] if sheet else workbook[names[0]]
+            rows_iter = ws.iter_rows(values_only=True)
+            header = next(rows_iter, None)
+            if header is not None:
+                columns = [
+                    str(cell) if cell is not None else f"col_{index + 1}"
+                    for index, cell in enumerate(header)
+                ]
+                for values in rows_iter:
+                    if len(rows) >= MAX_FILE_ROWS:
+                        break
+                    if all(value is None for value in values):
+                        continue
+                    rows.append(
+                        {
+                            columns[index] if index < len(columns) else f"col_{index + 1}":
+                                str(value) if hasattr(value, "isoformat") else value
+                            for index, value in enumerate(values)
+                        }
+                    )
+        finally:
+            workbook.close()
+    else:
+        raise ValueError(f"Unsupported file format '{format_}' (xlsx or csv)")
+
+    if len(_file_cache) >= _FILE_CACHE_MAX:
+        _file_cache.pop(next(iter(_file_cache)))
+    _file_cache[cache_key] = rows
+    return rows
+
+
+def list_workbook_sheets(file_id: str) -> list[str]:
+    """Sheet names of an .xlsx in the file store (for the upload dialog)."""
+    import io
+
+    import openpyxl
+
+    workbook = openpyxl.load_workbook(
+        io.BytesIO(get_file_store().read_bytes(file_id)), read_only=True
+    )
+    try:
+        return list(workbook.sheetnames)
+    finally:
+        workbook.close()
+
+
+class FileAdapter:
+    """An uploaded xlsx/csv file — parsed once, served from memory."""
+
+    def __init__(self, file_id: str, format_: str, sheet: str | None = None) -> None:
+        self.rows_data = parse_file_rows(file_id, format_, sheet)
+
+    def schema(self) -> list[dict[str, str]]:
+        return _infer_schema(self.rows_data[:100])
+
+    def rows(self, limit: int, offset: int) -> dict[str, Any]:
+        return {
+            "rows": self.rows_data[offset : offset + limit],
+            "total": len(self.rows_data),
+        }
+
+    def aggregate(
+        self, metric: str, field: str | None, group_by: str | None
+    ) -> list[dict[str, Any]]:
+        return aggregate_rows(
+            self.rows_data, metric=metric, field=field, group_by=group_by
+        )
+
+
+def _infer_schema(sample: list[dict[str, Any]]) -> list[dict[str, str]]:
+    types: dict[str, str] = {}
+    for row in sample:
+        for key, value in row.items():
+            if key.startswith("_"):
+                continue
+            if isinstance(value, bool):
+                inferred = "boolean"
+            elif isinstance(value, (int, float)):
+                inferred = "number"
+            elif isinstance(value, (dict, list)):
+                inferred = "object"
+            else:
+                inferred = "string"
+            if key not in types or types[key] == "string":
+                types[key] = inferred
+    return [{"name": name, "type": kind} for name, kind in types.items()]
+
+
 # ----------------------------------------------------------------- dispatch
 
 
@@ -314,13 +441,19 @@ def resolve_source(source_id: str) -> dict[str, Any] | None:
     return get_source_registry().get(source_id)
 
 
-def get_adapter(source: dict[str, Any]) -> DatasetAdapter | SQLAdapter:
+def get_adapter(
+    source: dict[str, Any],
+) -> DatasetAdapter | SQLAdapter | FileAdapter:
     kind = source["kind"]
     config = source["config"]
     if kind == "dataset":
         return DatasetAdapter(config["dataset"])
     if kind == "sql":
         return SQLAdapter(config["credential"], config["table"])
+    if kind == "file":
+        return FileAdapter(
+            config["file_id"], config.get("format", "xlsx"), config.get("sheet")
+        )
     raise ValueError(f"Unknown source kind '{kind}'")
 
 

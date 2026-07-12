@@ -11,6 +11,7 @@ import {
   listCredentialTables,
   listCredentials,
   listSources,
+  uploadFile,
 } from '../api'
 import type {
   CredentialSummary,
@@ -97,11 +98,13 @@ export function DatasetsView() {
                   <span>
                     {source.kind === 'sql'
                       ? `table ${String(source.config.table ?? '')}`
-                      : `${source.rows ?? 0} rows${
-                          source.last_written_at
-                            ? ` · ${new Date(source.last_written_at).toLocaleDateString()}`
-                            : ''
-                        }`}
+                      : source.kind === 'file'
+                        ? String(source.config.file_name ?? source.config.format ?? 'file')
+                        : `${source.rows ?? 0} rows${
+                            source.last_written_at
+                              ? ` · ${new Date(source.last_written_at).toLocaleDateString()}`
+                              : ''
+                          }`}
                   </span>
                 </button>
               ))}
@@ -139,6 +142,7 @@ function AddSourceDialog({
   onClose: () => void
   onCreated: (id: string) => void
 }) {
+  const [mode, setMode] = useState<'sql' | 'file'>('sql')
   const [credentials, setCredentials] = useState<CredentialSummary[]>([])
   const [credential, setCredential] = useState('')
   const [tables, setTables] = useState<string[] | null>(null)
@@ -146,6 +150,12 @@ function AddSourceDialog({
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [uploaded, setUploaded] = useState<{
+    id: string
+    name: string
+    sheets: string[] | null
+  } | null>(null)
+  const [sheet, setSheet] = useState('')
 
   useEffect(() => {
     listCredentials()
@@ -165,7 +175,7 @@ function AddSourceDialog({
       .catch((err) => setError((err as Error).message))
   }, [credential])
 
-  const submit = async () => {
+  const submitSql = async () => {
     setBusy(true)
     setError(null)
     try {
@@ -181,62 +191,165 @@ function AddSourceDialog({
     }
   }
 
+  const onFilePicked = async (file: File | undefined) => {
+    if (!file) return
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await uploadFile(file)
+      setUploaded({ id: result.file.id, name: result.file.name, sheets: result.sheets })
+      setSheet(result.sheets?.[0] ?? '')
+      if (!name) setName(result.file.name.replace(/\.(xlsx|csv)$/i, ''))
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const submitFile = async () => {
+    if (!uploaded) return
+    setBusy(true)
+    setError(null)
+    try {
+      const format = uploaded.name.toLowerCase().endsWith('.csv') ? 'csv' : 'xlsx'
+      const config: Record<string, unknown> = {
+        file_id: uploaded.id,
+        format,
+        file_name: uploaded.name,
+      }
+      if (format === 'xlsx' && sheet) config.sheet = sheet
+      const created = await createSource(name || uploaded.name, 'file', config)
+      onCreated(created.id)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="add-source-overlay" onClick={onClose}>
       <div className="add-source-dialog" onClick={(event) => event.stopPropagation()}>
-        <h2>Connect a database table</h2>
-        {credentials.length === 0 ? (
-          <p className="config-subtitle">
-            No database credentials yet — add a PostgreSQL credential in
-            Workflow Studio's Credentials panel first.
-          </p>
-        ) : (
-          <>
-            <label className="field">
-              <span>Credential</span>
-              <select value={credential} onChange={(e) => setCredential(e.target.value)}>
-                <option value="">Choose…</option>
-                {credentials.map((c) => (
-                  <option key={c.name} value={c.name}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {tables && (
+        <h2>Add a data source</h2>
+        <div className="add-source-tabs">
+          <button
+            className={mode === 'sql' ? 'active' : ''}
+            onClick={() => setMode('sql')}
+          >
+            🐘 Database table
+          </button>
+          <button
+            className={mode === 'file' ? 'active' : ''}
+            onClick={() => setMode('file')}
+          >
+            📄 Upload file
+          </button>
+        </div>
+
+        {mode === 'sql' &&
+          (credentials.length === 0 ? (
+            <p className="config-subtitle">
+              No database credentials yet — add a PostgreSQL credential in
+              Workflow Studio's Credentials panel first.
+            </p>
+          ) : (
+            <>
               <label className="field">
-                <span>Table</span>
-                <select value={table} onChange={(e) => setTable(e.target.value)}>
+                <span>Credential</span>
+                <select value={credential} onChange={(e) => setCredential(e.target.value)}>
                   <option value="">Choose…</option>
-                  {tables.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
+                  {credentials.map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.name}
                     </option>
                   ))}
                 </select>
               </label>
-            )}
-            {table && (
-              <label className="field">
-                <span>Source name</span>
-                <input
-                  value={name}
-                  placeholder={`${table} (${credential})`}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </label>
+              {tables && (
+                <label className="field">
+                  <span>Table</span>
+                  <select value={table} onChange={(e) => setTable(e.target.value)}>
+                    <option value="">Choose…</option>
+                    {tables.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {table && (
+                <label className="field">
+                  <span>Source name</span>
+                  <input
+                    value={name}
+                    placeholder={`${table} (${credential})`}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </label>
+              )}
+            </>
+          ))}
+
+        {mode === 'file' && (
+          <>
+            <label className="field">
+              <span>Excel (.xlsx) or CSV file</span>
+              <input
+                type="file"
+                accept=".xlsx,.csv"
+                disabled={busy}
+                onChange={(e) => void onFilePicked(e.target.files?.[0])}
+              />
+            </label>
+            {uploaded && (
+              <>
+                <p className="config-subtitle">📎 {uploaded.name} uploaded</p>
+                {uploaded.sheets && uploaded.sheets.length > 1 && (
+                  <label className="field">
+                    <span>Sheet</span>
+                    <select value={sheet} onChange={(e) => setSheet(e.target.value)}>
+                      {uploaded.sheets.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <label className="field">
+                  <span>Source name</span>
+                  <input
+                    value={name}
+                    placeholder={uploaded.name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </label>
+              </>
             )}
           </>
         )}
+
         {error && <p className="error-text">{error}</p>}
         <div className="credential-form-actions">
-          <button
-            className="primary-small"
-            disabled={busy || !credential || !table}
-            onClick={submit}
-          >
-            {busy ? 'Connecting…' : 'Connect'}
-          </button>
+          {mode === 'sql' ? (
+            <button
+              className="primary-small"
+              disabled={busy || !credential || !table}
+              onClick={submitSql}
+            >
+              {busy ? 'Connecting…' : 'Connect'}
+            </button>
+          ) : (
+            <button
+              className="primary-small"
+              disabled={busy || !uploaded}
+              onClick={submitFile}
+            >
+              {busy ? 'Working…' : 'Add source'}
+            </button>
+          )}
           <button onClick={onClose}>Cancel</button>
         </div>
       </div>
