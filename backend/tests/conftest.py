@@ -44,7 +44,7 @@ def client(tmp_path, monkeypatch):
     reset_file_store()
     reset_dataset_store()
 
-    import app.analytics_sources as analytics_sources
+    import app.data_catalog as analytics_sources
 
     analytics_sources.reset_source_registry()
 

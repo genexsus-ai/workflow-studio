@@ -265,6 +265,25 @@ export const aggregateSource = (id: string, metric: string, field?: string, grou
   )
 }
 
+export interface SourceProfile {
+  total_rows: number
+  profiled_rows: number
+  columns: {
+    name: string
+    type: string
+    nulls: number
+    distinct: number
+    min?: number
+    max?: number
+    mean?: number
+    std?: number
+    top_values?: { value: string; count: number }[]
+  }[]
+}
+
+export const getSourceProfile = (id: string) =>
+  fetch(`${API}/analytics/sources/${id}/profile`).then((r) => json<SourceProfile>(r))
+
 export const analyzeSource = (id: string, question?: string) =>
   fetch(`${API}/analytics/sources/${id}/analyze`, {
     method: 'POST',

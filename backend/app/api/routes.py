@@ -522,7 +522,11 @@ def delete_dataset(name: str) -> None:
 
 
 async def _analyze_rows(
-    name: str, sample: dict, question: str | None, model_override: str | None
+    name: str,
+    sample: dict,
+    question: str | None,
+    model_override: str | None,
+    profile: dict | None = None,
 ) -> dict:
     """LLM analysis of a rows sample: patterns, anomalies, suggestions."""
     from app.generation import DEFAULT_GENERATION_MODEL, _resolve_model_and_key
@@ -545,10 +549,17 @@ async def _analyze_rows(
     effective_question = question or (
         "What patterns, outliers, and actionable insights do you see?"
     )
+    profile_block = (
+        f"Column statistics (over up to 10k rows):\n"
+        f"{json.dumps(profile['columns'], default=str)[:4000]}\n\n"
+        if profile
+        else ""
+    )
     prompt = (
         f"Data source '{name}': {sample['total']} rows total; columns: "
         f"{', '.join(columns) or '(none)'}.\n"
-        f"Sample of {len(sample['rows'])} rows as JSON:\n{json.dumps(sample['rows'], default=str)[:12000]}\n\n"
+        f"{profile_block}"
+        f"Sample of {len(sample['rows'])} rows as JSON:\n{json.dumps(sample['rows'], default=str)[:10000]}\n\n"
         f"Question: {effective_question}\n"
         "Answer with 3-6 concise bullet points grounded ONLY in this data. "
         "Note explicitly that this is a sample if that limits any conclusion."
@@ -578,7 +589,7 @@ async def analyze_dataset(name: str, payload: DatasetAnalyzeRequest) -> dict:
 
 
 def _resolve_source_or_404(source_id: str) -> tuple[dict, "Any"]:
-    from app.analytics_sources import get_adapter, resolve_source
+    from app.data_catalog import get_adapter, resolve_source
 
     source = resolve_source(source_id)
     if source is None:
@@ -591,14 +602,14 @@ def _resolve_source_or_404(source_id: str) -> tuple[dict, "Any"]:
 
 @router.get("/analytics/sources")
 def list_analytics_sources() -> list[dict]:
-    from app.analytics_sources import list_all_sources
+    from app.data_catalog import list_all_sources
 
     return list_all_sources()
 
 
 @router.post("/analytics/sources", status_code=201)
 def create_analytics_source(payload: SourceCreate) -> dict:
-    from app.analytics_sources import FileAdapter, SQLAdapter, get_source_registry
+    from app.data_catalog import FileAdapter, SQLAdapter, get_source_registry
 
     name = payload.name.strip()
     if not name:
@@ -659,7 +670,7 @@ def create_analytics_source(payload: SourceCreate) -> dict:
         return get_source_registry().create(name, "file", config)
 
     if payload.kind == "gsheet":
-        from app.analytics_sources import GSheetAdapter
+        from app.data_catalog import GSheetAdapter
 
         credential = str(payload.config.get("credential") or "")
         spreadsheet_id = str(payload.config.get("spreadsheet_id") or "")
@@ -688,7 +699,7 @@ def create_analytics_source(payload: SourceCreate) -> dict:
         )
 
     if payload.kind == "duckdb":
-        from app.analytics_sources import FederatedAdapter
+        from app.data_catalog import FederatedAdapter
 
         sql = str(payload.config.get("sql") or "")
         sources = payload.config.get("sources") or {}
@@ -710,7 +721,7 @@ def create_analytics_source(payload: SourceCreate) -> dict:
         )
 
     if payload.kind == "s3":
-        from app.analytics_sources import s3_file_adapter
+        from app.data_catalog import s3_file_adapter
 
         credential = str(payload.config.get("credential") or "")
         bucket = str(payload.config.get("bucket") or "")
@@ -752,7 +763,7 @@ def create_analytics_source(payload: SourceCreate) -> dict:
 
 @router.delete("/analytics/sources/{source_id}", status_code=204)
 def delete_analytics_source(source_id: str) -> None:
-    from app.analytics_sources import get_source_registry
+    from app.data_catalog import get_source_registry
 
     if source_id.startswith("dataset:"):
         raise HTTPException(
@@ -795,20 +806,65 @@ def aggregate_source(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.get("/analytics/sources/{source_id}/sample")
+def sample_analytics_source(source_id: str, n: int = 100) -> dict:
+    from app.data_catalog import sample_source
+
+    _, adapter = _resolve_source_or_404(source_id)
+    try:
+        return sample_source(adapter, max(1, min(n, 5000)))
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/analytics/sources/{source_id}/profile")
+def profile_analytics_source(source_id: str) -> dict:
+    from app.data_catalog import profile_source
+
+    _, adapter = _resolve_source_or_404(source_id)
+    try:
+        return profile_source(adapter)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/analytics/sources/{source_id}/export")
+def export_analytics_source(source_id: str, format: str = "csv") -> "Response":
+    from fastapi import Response
+
+    from app.data_catalog import export_source
+
+    source, adapter = _resolve_source_or_404(source_id)
+    try:
+        filename, payload, media_type = export_source(source, adapter, format)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return Response(
+        content=payload,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/analytics/sources/{source_id}/analyze")
 async def analyze_source(source_id: str, payload: DatasetAnalyzeRequest) -> dict:
+    from app.data_catalog import profile_source
+
     source, adapter = _resolve_source_or_404(source_id)
     try:
         sample = adapter.rows(limit=50, offset=0)
+        profile = profile_source(adapter)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return await _analyze_rows(source["name"], sample, payload.question, payload.model)
+    return await _analyze_rows(
+        source["name"], sample, payload.question, payload.model, profile=profile
+    )
 
 
 @router.post("/analytics/sources/{source_id}/materialize", status_code=201)
 async def materialize_source(source_id: str, payload: MaterializeRequest) -> dict:
     """Generate a scheduled workflow that syncs a SQL source into a dataset."""
-    from app.analytics_sources import resolve_source
+    from app.data_catalog import resolve_source
 
     source = resolve_source(source_id)
     if source is None:
@@ -907,7 +963,7 @@ async def materialize_source(source_id: str, payload: MaterializeRequest) -> dic
 
 @router.get("/analytics/credentials/{credential}/tables")
 def get_credential_tables(credential: str) -> dict:
-    from app.analytics_sources import list_credential_tables
+    from app.data_catalog import list_credential_tables
 
     try:
         return {"tables": list_credential_tables(credential)}
@@ -942,7 +998,7 @@ async def upload_file(file: "UploadFile") -> dict:
 
     sheets: list[str] | None = None
     if name.lower().endswith(".xlsx"):
-        from app.analytics_sources import list_workbook_sheets
+        from app.data_catalog import list_workbook_sheets
 
         try:
             sheets = list_workbook_sheets(ref["id"])
@@ -1256,3 +1312,23 @@ def delete_run(run_id: str) -> None:
     if record.status in {"queued", "running"}:
         raise HTTPException(status_code=409, detail="Cancel the run before deleting it")
     store.delete(run_id)
+
+
+# The catalog is the platform's shared data layer, not an Analytics detail:
+# every /analytics/... route is also reachable under /data/... so future
+# consumers (Data Science app, notebooks) don't couple to the Analytics name.
+def _register_data_aliases() -> None:
+    from fastapi.routing import APIRoute
+
+    for route in list(router.routes):
+        if isinstance(route, APIRoute) and route.path.startswith("/analytics/"):
+            router.add_api_route(
+                route.path.replace("/analytics/", "/data/", 1),
+                route.endpoint,
+                methods=list(route.methods or []),
+                status_code=route.status_code,
+                include_in_schema=False,
+            )
+
+
+_register_data_aliases()

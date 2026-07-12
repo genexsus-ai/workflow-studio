@@ -443,7 +443,7 @@ def test_federated_validation(client):
 
 
 def test_gsheet_source_with_stubbed_api(client, monkeypatch):
-    import app.analytics_sources as sources_module
+    import app.data_catalog as sources_module
 
     client.post(
         "/api/v1/credentials",
@@ -509,7 +509,7 @@ def test_gsheet_requires_existing_credential(client):
 
 
 def test_s3_source_with_stubbed_fetch(client, monkeypatch):
-    import app.analytics_sources as sources_module
+    import app.data_catalog as sources_module
 
     client.post(
         "/api/v1/credentials",
@@ -568,3 +568,121 @@ def test_s3_connector_in_catalog(client):
     assert {"list_objects", "get_object", "put_object"} <= set(s3["actions"])
     field_names = {f["name"] for f in s3["credential_fields"]}
     assert {"access_key_id", "secret_access_key", "region"} <= field_names
+
+
+# ------------------------------------------------------------- data catalog
+
+
+def test_data_alias_routes(client):
+    _seed_dataset([{"a": 1}])
+    # Same handlers under both prefixes
+    analytics = client.get("/api/v1/analytics/sources").json()
+    data = client.get("/api/v1/data/sources").json()
+    assert analytics == data
+    rows = client.get("/api/v1/data/sources/dataset:events/rows").json()
+    assert rows["total"] == 1
+
+
+def test_sample_endpoint(client):
+    _seed_dataset([{"n": i} for i in range(50)])
+    sample = client.get("/api/v1/data/sources/dataset:events/sample?n=10").json()
+    assert len(sample["rows"]) == 10
+    assert sample["total"] == 50
+    values = {row["n"] for row in sample["rows"]}
+    assert values <= set(range(50))
+
+
+def test_profile_endpoint(client):
+    _seed_dataset(
+        [
+            {"region": "east", "total": 10},
+            {"region": "east", "total": 30},
+            {"region": "west", "total": None},
+        ]
+    )
+    profile = client.get("/api/v1/data/sources/dataset:events/profile").json()
+    assert profile["total_rows"] == 3
+    by_name = {c["name"]: c for c in profile["columns"]}
+    assert by_name["total"]["type"] == "number"
+    assert by_name["total"]["nulls"] == 1
+    assert by_name["total"]["min"] == 10.0
+    assert by_name["total"]["max"] == 30.0
+    assert by_name["total"]["mean"] == 20.0
+    assert by_name["region"]["type"] == "string"
+    assert by_name["region"]["top_values"][0]["value"] == "east"
+
+
+def test_export_csv_and_parquet(client):
+    _seed_dataset([{"region": "east", "total": 10}, {"region": "west", "total": 5}])
+
+    csv_response = client.get("/api/v1/data/sources/dataset:events/export?format=csv")
+    assert csv_response.status_code == 200
+    assert "events.csv" in csv_response.headers["content-disposition"]
+    lines = csv_response.text.strip().splitlines()
+    assert lines[0].split(",")[0] in ("region", "total")
+    assert len(lines) == 3
+
+    parquet_response = client.get(
+        "/api/v1/data/sources/dataset:events/export?format=parquet"
+    )
+    assert parquet_response.status_code == 200
+    assert parquet_response.content[:4] == b"PAR1"  # parquet magic bytes
+
+    # Parquet round-trips through duckdb
+    import tempfile
+    from pathlib import Path
+
+    import duckdb
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "x.parquet"
+        path.write_bytes(parquet_response.content)
+        con = duckdb.connect()
+        total = con.execute(
+            f"SELECT SUM(total) FROM read_parquet('{path}')"
+        ).fetchone()[0]
+        con.close()
+    assert total == 15
+
+    assert (
+        client.get("/api/v1/data/sources/dataset:events/export?format=xml").status_code
+        == 422
+    )
+
+
+def test_source_query_tool_via_workflow(client):
+    _seed_dataset([{"title": "hello"}, {"title": "world"}], name="articles")
+
+    doc = {
+        "name": "Reader",
+        "nodes": [
+            {"id": "start", "type": "input", "position": {"x": 0, "y": 0}, "config": {}},
+            {
+                "id": "read",
+                "type": "tool",
+                "position": {"x": 100, "y": 0},
+                "config": {
+                    "tool_name": "source_query",
+                    "tool_params": {"source": "dataset:articles", "limit": 10},
+                },
+            },
+        ],
+        "edges": [{"source": "start", "target": "read"}],
+    }
+    created = client.post("/api/v1/workflows", json=doc).json()
+    result = client.post(
+        f"/api/v1/workflows/{created['id']}/test-node",
+        json={"node_id": "read", "input": {}},
+    ).json()
+
+    assert result["status"] == "success"
+    output = result["output"]["data"]
+    assert output["total"] == 2
+    assert {row["title"] for row in output["rows"]} == {"hello", "world"}
+
+    # Lookup by display name also works
+    result2 = client.post(
+        f"/api/v1/workflows/{created['id']}/test-node",
+        json={"node_id": "read", "input": {}, "upstream": {}},
+    ).json()
+    assert result2["status"] == "success"

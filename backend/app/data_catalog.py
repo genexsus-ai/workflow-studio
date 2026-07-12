@@ -1,10 +1,11 @@
-"""Analytics data sources: one adapter interface over datasets and SQL tables.
+"""The data catalog: one adapter interface over every tabular data source.
 
-A *source* is a registered pointer to tabular data. Internal datasets are
-implicit sources (always listed, nothing stored); SQL sources pair an
-encrypted credential (the same ones the Postgres connector uses) with a
-table name. Every kind answers the same three questions — schema, rows,
-aggregate — which is exactly what the Analytics UI consumes.
+A *source* is a registered pointer to tabular data — internal datasets
+(implicit), SQL tables and custom queries, uploaded files, Google Sheets,
+S3 objects, and DuckDB federations. Every kind answers the same questions
+(schema, rows, sample, profile, aggregate), which makes the catalog the
+shared data layer for Analytics, Data Science, workflows (source_query
+tool), and agents alike.
 """
 
 from __future__ import annotations
@@ -771,6 +772,138 @@ def get_adapter(
     raise ValueError(f"Unknown source kind '{kind}'")
 
 
+# ------------------------------------------------- sample / profile / export
+
+PROFILE_SCAN_ROWS = 10_000
+EXPORT_MAX_ROWS = 200_000
+_EXPORT_PAGE = 5_000
+
+
+def sample_source(adapter: Any, n: int) -> dict[str, Any]:
+    """A random sample of up to ``n`` rows (scans at most PROFILE_SCAN_ROWS)."""
+    import random
+
+    page = adapter.rows(PROFILE_SCAN_ROWS, 0)
+    rows = page["rows"]
+    n = max(1, min(int(n), len(rows))) if rows else 0
+    picked = random.sample(rows, n) if n and len(rows) > n else rows
+    return {"rows": picked, "sampled_from": len(rows), "total": page["total"]}
+
+
+def profile_source(adapter: Any) -> dict[str, Any]:
+    """Per-column statistics over up to PROFILE_SCAN_ROWS rows."""
+    import statistics
+    from collections import Counter
+
+    page = adapter.rows(PROFILE_SCAN_ROWS, 0)
+    rows = page["rows"]
+    columns: list[str] = []
+    for row in rows:
+        for key in row:
+            if not key.startswith("_") and key not in columns:
+                columns.append(key)
+
+    profiles = []
+    for column in columns:
+        values = [row.get(column) for row in rows]
+        present = [v for v in values if v is not None and v != ""]
+        numeric = [
+            float(v)
+            for v in present
+            if isinstance(v, (int, float)) and not isinstance(v, bool)
+        ]
+        entry: dict[str, Any] = {
+            "name": column,
+            "nulls": len(values) - len(present),
+            "distinct": len({str(v) for v in present[:5000]}),
+        }
+        if numeric and len(numeric) >= max(1, len(present) // 2):
+            entry["type"] = "number"
+            entry["min"] = min(numeric)
+            entry["max"] = max(numeric)
+            entry["mean"] = sum(numeric) / len(numeric)
+            if len(numeric) > 1:
+                entry["std"] = statistics.stdev(numeric)
+        else:
+            entry["type"] = "string"
+            top = Counter(str(v) for v in present).most_common(5)
+            entry["top_values"] = [
+                {"value": value, "count": count} for value, count in top
+            ]
+        profiles.append(entry)
+
+    return {
+        "total_rows": page["total"],
+        "profiled_rows": len(rows),
+        "columns": profiles,
+    }
+
+
+def _collect_all_rows(adapter: Any) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    offset = 0
+    while len(rows) < EXPORT_MAX_ROWS:
+        page = adapter.rows(_EXPORT_PAGE, offset)
+        rows.extend(page["rows"])
+        offset += _EXPORT_PAGE
+        if offset >= page["total"] or not page["rows"]:
+            break
+    return rows[:EXPORT_MAX_ROWS]
+
+
+def export_source(
+    source: dict[str, Any], adapter: Any, format_: str
+) -> tuple[str, bytes, str]:
+    """Export a source's rows; returns (filename, payload, media type)."""
+    rows = _collect_all_rows(adapter)
+    columns: list[str] = []
+    for row in rows:
+        for key in row:
+            if not key.startswith("_") and key not in columns:
+                columns.append(key)
+    safe_name = re.sub(r"[^A-Za-z0-9_\-]+", "_", source["name"]).strip("_") or "source"
+
+    if format_ == "csv":
+        import csv
+        import io
+
+        buffer = io.StringIO()
+        writer = csv.DictWriter(buffer, fieldnames=columns, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {
+                    column: (
+                        json.dumps(value, default=str)
+                        if isinstance(value, (dict, list))
+                        else value
+                    )
+                    for column, value in row.items()
+                    if column in columns
+                }
+            )
+        return f"{safe_name}.csv", buffer.getvalue().encode("utf-8"), "text/csv"
+
+    if format_ == "parquet":
+        import tempfile
+        from pathlib import Path
+
+        import duckdb
+
+        con = duckdb.connect()
+        try:
+            _duckdb_load(con, "export_rows", rows)
+            with tempfile.TemporaryDirectory() as tmp:
+                target = Path(tmp) / "export.parquet"
+                con.execute(f"COPY export_rows TO '{target}' (FORMAT PARQUET)")
+                payload = target.read_bytes()
+        finally:
+            con.close()
+        return f"{safe_name}.parquet", payload, "application/vnd.apache.parquet"
+
+    raise ValueError("format must be csv or parquet")
+
+
 def list_credential_tables(credential: str) -> list[str]:
     """Table names visible through a stored SQL credential (for the UI)."""
     from sqlalchemy import create_engine, inspect
@@ -783,3 +916,79 @@ def list_credential_tables(credential: str) -> list[str]:
         return sorted(inspect(engine).get_table_names())
     finally:
         engine.dispose()
+
+
+# --------------------------------------------------------------- worflow tool
+
+
+def make_source_query_tool() -> Any:
+    """A workflow tool that reads any catalog source by id or name."""
+    from genxai.tools.base import Tool, ToolCategory, ToolMetadata, ToolParameter
+
+    class SourceQueryTool(Tool):
+        def __init__(self) -> None:
+            super().__init__(
+                metadata=ToolMetadata(
+                    name="source_query",
+                    description=(
+                        "Read rows from any data-catalog source (dataset, "
+                        "database table/query, file, sheet, S3 object, or "
+                        "federated query) by source id or name"
+                    ),
+                    category=ToolCategory.DATA_PROCESSING,
+                    tags=["source", "catalog", "data", "analytics"],
+                    version="1.0.0",
+                ),
+                parameters=[
+                    ToolParameter(
+                        name="source",
+                        type="string",
+                        description="Source id (e.g. dataset:events) or its display name",
+                        required=True,
+                    ),
+                    ToolParameter(
+                        name="limit",
+                        type="number",
+                        description="Maximum rows to return",
+                        required=False,
+                        default=100,
+                        min_value=1,
+                        max_value=5000,
+                    ),
+                ],
+            )
+
+        async def _execute(self, **kwargs: Any) -> dict[str, Any]:
+            import asyncio
+
+            identifier = str(kwargs["source"])
+            source = resolve_source(identifier)
+            if source is None:
+                lowered = identifier.lower()
+                source = next(
+                    (
+                        s
+                        for s in list_all_sources()
+                        if s["name"].lower() == lowered
+                    ),
+                    None,
+                )
+            if source is None:
+                raise ValueError(f"Source '{identifier}' not found in the catalog")
+
+            limit = int(kwargs.get("limit") or 100)
+
+            def _run() -> dict[str, Any]:
+                adapter = get_adapter(source)
+                page = adapter.rows(limit, 0)
+                return {
+                    "source": source["id"],
+                    "name": source["name"],
+                    "kind": source["kind"],
+                    "rows": page["rows"],
+                    "total": page["total"],
+                }
+
+            return await asyncio.to_thread(_run)
+
+    return SourceQueryTool()

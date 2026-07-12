@@ -3,9 +3,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   aggregateSource,
   analyzeSource,
+  apiBase,
   createSource,
   deleteDataset,
   deleteSource,
+  getSourceProfile,
   getSourceRows,
   getSourceSchema,
   listCredentialTables,
@@ -13,6 +15,7 @@ import {
   listSources,
   materializeSource,
   uploadFile,
+  type SourceProfile,
 } from '../api'
 import type {
   CredentialSummary,
@@ -712,16 +715,33 @@ function SourceDetail({
             ? `${KIND_META.sql.icon} ${String(source.config.table ?? '')} · ${page?.total ?? '…'} rows`
             : `${page?.total ?? 0} rows`}
         </span>
-        <button
-          className="danger"
-          title={source.kind === 'dataset' ? 'Delete this dataset' : 'Disconnect this source'}
-          onClick={remove}
-        >
-          {source.kind === 'dataset' ? '🗑' : '✕'}
-        </button>
+        <span className="credential-row-actions">
+          <a
+            className="export-link"
+            href={`${apiBase}/analytics/sources/${source.id}/export?format=csv`}
+            title="Download all rows as CSV"
+          >
+            ⬇ CSV
+          </a>
+          <a
+            className="export-link"
+            href={`${apiBase}/analytics/sources/${source.id}/export?format=parquet`}
+            title="Download all rows as Parquet"
+          >
+            ⬇ Parquet
+          </a>
+          <button
+            className="danger"
+            title={source.kind === 'dataset' ? 'Delete this dataset' : 'Disconnect this source'}
+            onClick={remove}
+          >
+            {source.kind === 'dataset' ? '🗑' : '✕'}
+          </button>
+        </span>
       </div>
       {error && <p className="error-text">{error}</p>}
 
+      <ProfileSection sourceId={source.id} />
       <ChartBuilder sourceId={source.id} columns={columns} numericColumns={numericColumns} />
       {source.kind === 'sql' && <MaterializeSection source={source} />}
       <AnalyzeSection sourceId={source.id} />
@@ -880,6 +900,71 @@ function ChartBuilder({
         </div>
       )}
     </section>
+  )
+}
+
+function ProfileSection({ sourceId }: { sourceId: string }) {
+  const [profile, setProfile] = useState<SourceProfile | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = () => {
+    if (profile) return
+    getSourceProfile(sourceId)
+      .then(setProfile)
+      .catch((err) => setError((err as Error).message))
+  }
+
+  const fmt = (value: number | undefined) =>
+    value == null ? '—' : Number.isInteger(value) ? String(value) : value.toFixed(2)
+
+  return (
+    <details className="insights-card" onToggle={(e) => (e.target as HTMLDetailsElement).open && load()}>
+      <summary className="profile-summary">Profile</summary>
+      {error && <p className="error-text">{error}</p>}
+      {profile && (
+        <>
+          <p className="config-subtitle">
+            {profile.profiled_rows} of {profile.total_rows} rows profiled
+          </p>
+          <div className="dataset-table-wrap">
+            <table className="insights-table">
+              <thead>
+                <tr>
+                  <th>Column</th>
+                  <th>Type</th>
+                  <th className="num">Nulls</th>
+                  <th className="num">Distinct</th>
+                  <th className="num">Min</th>
+                  <th className="num">Mean</th>
+                  <th className="num">Max</th>
+                  <th>Top values</th>
+                </tr>
+              </thead>
+              <tbody>
+                {profile.columns.map((column) => (
+                  <tr key={column.name}>
+                    <td>
+                      <code>{column.name}</code>
+                    </td>
+                    <td>{column.type}</td>
+                    <td className="num">{column.nulls}</td>
+                    <td className="num">{column.distinct}</td>
+                    <td className="num">{fmt(column.min)}</td>
+                    <td className="num">{fmt(column.mean)}</td>
+                    <td className="num">{fmt(column.max)}</td>
+                    <td className="truncate">
+                      {column.top_values
+                        ?.map((entry) => `${entry.value} (${entry.count})`)
+                        .join(', ') ?? '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </details>
   )
 }
 

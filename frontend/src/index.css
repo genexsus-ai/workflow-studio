@@ -490,6 +490,26 @@ body {
   margin-top: 8px;
 }
 
+.export-link {
+  font-size: 12px;
+  color: #2563eb;
+  text-decoration: none;
+  padding: 4px 8px;
+  border: 1px solid #dbeafe;
+  border-radius: 6px;
+  background: #eff6ff;
+}
+
+.export-link:hover {
+  border-color: #2563eb;
+}
+
+.profile-summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .chart-builder-filters label {
   font-size: 12px;
   color: #475569;

@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 def register_studio_tools() -> int:
     """Register the curated tool set; returns how many tools are available."""
     from app.connectors_catalog import ConnectorActionTool
+    from app.data_catalog import make_source_query_tool
     from app.mcp_registry import MCPActionTool
     from genxai.tools.builtin.computation.calculator import CalculatorTool
     from genxai.tools.builtin.computation.data_validator import DataValidatorTool
@@ -82,6 +83,13 @@ def register_studio_tools() -> int:
                 ToolRegistry.register(tool)
         except Exception as exc:
             logger.warning("Skipping tool %s: %s", tool_class.__name__, exc)
+
+    try:
+        source_query = make_source_query_tool()
+        if ToolRegistry.get(source_query.metadata.name) is None:
+            ToolRegistry.register(source_query)
+    except Exception as exc:
+        logger.warning("Skipping source_query tool: %s", exc)
 
     count = len(ToolRegistry.list_all())
     logger.info("Studio tool palette ready: %d tools", count)
