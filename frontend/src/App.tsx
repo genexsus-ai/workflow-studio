@@ -18,6 +18,7 @@ import { AutomationPanel } from './components/AutomationPanel'
 import type { PickedNode } from './components/NodePicker'
 import { Canvas } from './components/Canvas'
 import { ConfigPanel } from './components/ConfigPanel'
+import { InsightsView } from './components/InsightsView'
 import { CredentialsPanel } from './components/CredentialsPanel'
 import { GenerateDialog } from './components/GenerateDialog'
 import { McpServersPanel } from './components/McpServersPanel'
@@ -631,10 +632,14 @@ export default function App() {
     <ReactFlowProvider>
       <div className="app-shell">
         <AppSidebar active={activeApp} onSelect={setActiveApp} />
-        {activeApp !== 'workflow' ? (
+        {activeApp === 'analytics' ? (
+          <div className="app">
+            <InsightsView />
+          </div>
+        ) : activeApp !== 'workflow' ? (
           <div className="app app-placeholder">
             <div className="app-placeholder-body">
-              <h1>{activeApp === 'analytics' ? '📊 Analytics' : '🧪 Data Science'}</h1>
+              <h1>🧪 Data Science</h1>
               <p>
                 This workspace is on the roadmap. Workflow Studio is the first
                 GenXAI app — more are coming.

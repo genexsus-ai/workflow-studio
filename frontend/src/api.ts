@@ -1,5 +1,6 @@
 import type {
   AutomationConfig,
+  InsightsData,
   RunRecord,
   CredentialSummary,
   McpServerSummary,
@@ -227,6 +228,9 @@ export const apiBase = API
 
 export const listCredentials = () =>
   fetch(`${API}/credentials`).then((r) => json<CredentialSummary[]>(r))
+
+export const getInsights = (days: number) =>
+  fetch(`${API}/insights?days=${days}`).then((r) => json<InsightsData>(r))
 
 export const listWorkflowVersions = (id: string) =>
   fetch(`${API}/workflows/${id}/versions`).then((r) => json<WorkflowVersionInfo[]>(r))

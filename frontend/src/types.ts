@@ -234,6 +234,44 @@ export interface OAuthProvidersResponse {
   providers: OAuthProviderInfo[]
 }
 
+export interface InsightsDaily {
+  date: string
+  succeeded: number
+  failed: number
+  other: number
+}
+
+export interface InsightsWorkflow {
+  name: string
+  runs: number
+  succeeded: number
+  failed: number
+  success_rate: number
+  avg_duration_ms: number | null
+  last_run_at: string | null
+}
+
+export interface InsightsData {
+  days: number
+  totals: {
+    runs: number
+    succeeded: number
+    failed: number
+    other: number
+    success_rate: number | null
+    median_duration_ms: number | null
+  }
+  daily: InsightsDaily[]
+  workflows: InsightsWorkflow[]
+  triggers: { trigger: string; runs: number }[]
+  slowest_nodes: {
+    workflow: string
+    node_id: string
+    avg_duration_ms: number
+    runs: number
+  }[]
+}
+
 export interface McpServerSummary {
   name: string
   transport: string

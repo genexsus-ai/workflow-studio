@@ -467,6 +467,14 @@ async def fire_webhook(token: str, request: Request) -> dict:
     return {"status": "accepted", "run_id": run_id, "workflow_id": doc.id}
 
 
+@router.get("/insights")
+def get_insights(days: int = 14) -> dict:
+    """Aggregated run analytics for the Insights dashboard."""
+    from app.insights import compute_insights
+
+    return compute_insights(days=max(1, min(days, 90)))
+
+
 @router.get("/files/{file_id}")
 def download_file(file_id: str) -> "FileResponse":
     """Stream a stored workflow file (from file_download / file_write refs)."""
