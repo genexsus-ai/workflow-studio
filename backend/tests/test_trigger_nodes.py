@@ -87,6 +87,92 @@ def test_saving_schedule_trigger_node_enables_automation(client):
     assert automation["interval_seconds"] == 900
 
 
+def test_saving_cron_trigger_node_sets_schedule_cron(client):
+    response = client.post(
+        "/api/v1/workflows",
+        json=_doc({"trigger_kind": "schedule", "cron": "0 9 * * 1-5"}),
+    )
+
+    assert response.status_code == 201, response.text
+    automation = response.json()["automation"]
+    assert automation["schedule_enabled"] is True
+    assert automation["schedule_cron"] == "0 9 * * 1-5"
+
+
+def test_saving_cron_trigger_node_sets_timezone(client):
+    response = client.post(
+        "/api/v1/workflows",
+        json=_doc(
+            {
+                "trigger_kind": "schedule",
+                "cron": "0 9 * * 1-5",
+                "timezone": "America/New_York",
+            }
+        ),
+    )
+
+    assert response.status_code == 201, response.text
+    automation = response.json()["automation"]
+    assert automation["schedule_timezone"] == "America/New_York"
+
+
+def test_invalid_timezone_fails_validation(client):
+    result = client.post(
+        "/api/v1/workflows/validate",
+        json=_doc(
+            {"trigger_kind": "schedule", "cron": "0 9 * * *", "timezone": "Mars/Olympus"}
+        ),
+    ).json()
+
+    assert result["valid"] is False
+    assert any("timezone" in issue["message"].lower() for issue in result["issues"])
+
+
+def test_automation_endpoint_rejects_invalid_timezone(client):
+    created = client.post("/api/v1/workflows", json=_doc(None)).json()
+
+    response = client.post(
+        f"/api/v1/workflows/{created['id']}/automation",
+        json={
+            "webhook_enabled": False,
+            "schedule_enabled": True,
+            "interval_seconds": 300,
+            "schedule_cron": "0 9 * * *",
+            "schedule_timezone": "Mars/Olympus",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "timezone" in response.json()["detail"].lower()
+
+
+def test_invalid_cron_fails_validation(client):
+    result = client.post(
+        "/api/v1/workflows/validate",
+        json=_doc({"trigger_kind": "schedule", "cron": "not a cron"}),
+    ).json()
+
+    assert result["valid"] is False
+    assert any("cron" in issue["message"].lower() for issue in result["issues"])
+
+
+def test_automation_endpoint_rejects_invalid_cron(client):
+    created = client.post("/api/v1/workflows", json=_doc(None)).json()
+
+    response = client.post(
+        f"/api/v1/workflows/{created['id']}/automation",
+        json={
+            "webhook_enabled": False,
+            "schedule_enabled": True,
+            "interval_seconds": 300,
+            "schedule_cron": "99 99 * * *",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "cron" in response.json()["detail"].lower()
+
+
 def test_saving_webhook_trigger_node_provisions_token(client):
     response = client.post(
         "/api/v1/workflows",

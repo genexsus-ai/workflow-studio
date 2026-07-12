@@ -1,0 +1,34 @@
+{
+  "id": "example-scheduled-poll",
+  "name": "Example: Scheduled poll (app trigger pattern)",
+  "description": "The poll pattern: instead of a native 'new article' trigger, a cron schedule (weekdays 9am New York time) fires the run and the first step polls the source — here an RSS feed. Swap the RSS node for any connector (email, API, database) to emulate an app-specific trigger. Save the workflow to activate the schedule, or run it manually anytime. No API keys needed.",
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger",
+      "label": "Weekday mornings",
+      "position": { "x": 40, "y": 160 },
+      "config": { "trigger_kind": "schedule", "cron": "0 9 * * 1-5", "timezone": "America/New_York" }
+    },
+    {
+      "id": "poll_feed",
+      "type": "tool",
+      "label": "Poll Hacker News feed",
+      "position": { "x": 280, "y": 160 },
+      "config": {
+        "tool_name": "rss_reader",
+        "tool_params": { "url": "https://hnrss.org/frontpage", "limit": 5 }
+      }
+    },
+    {
+      "id": "end",
+      "type": "output",
+      "label": "Output",
+      "position": { "x": 520, "y": 160 },
+      "config": {}
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "poll_feed", "target": "end", "condition": null, "parallel": false }
+  ]
+}

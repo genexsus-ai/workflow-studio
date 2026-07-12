@@ -91,6 +91,7 @@ CONNECTOR_CATALOG: list[dict[str, Any]] = [
         "icon": "🐙",
         "color": "#24292f",
         "credential_fields": [{"name": "token", "secret": True}],
+        "oauth_provider": "github",
         "actions": {
             "get_repo": {
                 "description": "Fetch repository metadata",

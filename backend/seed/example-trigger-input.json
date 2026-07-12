@@ -1,0 +1,53 @@
+{
+  "id": "example-trigger-input",
+  "name": "Example: Webhook trigger + input node",
+  "description": "A webhook trigger starts the run; its POST body becomes the run input. The input node exposes that payload under the id 'start' so later nodes can reference {{ start.a }} and {{ start.b }}. Save the workflow to activate the webhook, then POST {\"a\": 6, \"b\": 7} to the hook URL — or run it manually with the same JSON as input. No API keys needed.",
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger",
+      "label": "Webhook",
+      "position": { "x": 40, "y": 160 },
+      "config": { "trigger_kind": "webhook", "webhook_provider": "generic" }
+    },
+    {
+      "id": "start",
+      "type": "input",
+      "label": "Input",
+      "position": { "x": 280, "y": 160 },
+      "config": {}
+    },
+    {
+      "id": "multiply",
+      "type": "tool",
+      "label": "a times b",
+      "position": { "x": 520, "y": 160 },
+      "config": {
+        "tool_name": "calculator",
+        "tool_params": { "expression": "{{ start.a }} * {{ start.b }}" }
+      }
+    },
+    {
+      "id": "add_back",
+      "type": "tool",
+      "label": "Add a back on",
+      "position": { "x": 760, "y": 160 },
+      "config": {
+        "tool_name": "calculator",
+        "tool_params": { "expression": "{{ multiply.data.result }} + {{ start.a }}" }
+      }
+    },
+    {
+      "id": "end",
+      "type": "output",
+      "label": "Output",
+      "position": { "x": 1000, "y": 160 },
+      "config": {}
+    }
+  ],
+  "edges": [
+    { "id": "e2", "source": "start", "target": "multiply", "condition": null, "parallel": false },
+    { "id": "e3", "source": "multiply", "target": "add_back", "condition": null, "parallel": false },
+    { "id": "e4", "source": "add_back", "target": "end", "condition": null, "parallel": false }
+  ]
+}

@@ -60,22 +60,17 @@ export function Canvas({
   const { screenToFlowPosition } = useReactFlow()
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [connectFrom, setConnectFrom] = useState<ConnectRequest | null>(null)
-
-  const onDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-  }, [])
-
-  const onDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault()
-      const type = event.dataTransfer.getData('application/genxai-node-type')
-      if (!type) return
-      const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
-      onDropNode({ type }, position)
-    },
-    [screenToFlowPosition, onDropNode],
+  const [freePickOpen, setFreePickOpen] = useState(false)
+  const [dark, setDark] = useState(
+    () => localStorage.getItem('genxai-canvas-dark') === '1',
   )
+
+  const toggleDark = useCallback(() => {
+    setDark((value) => {
+      localStorage.setItem('genxai-canvas-dark', value ? '0' : '1')
+      return !value
+    })
+  }, [])
 
   const addAtCenter = useCallback(
     (picked: PickedNode) => {
@@ -92,9 +87,10 @@ export function Canvas({
   )
 
   return (
-    <div className="canvas" ref={wrapperRef} onDragOver={onDragOver} onDrop={onDrop}>
+    <div className={`canvas${dark ? ' dark' : ''}`} ref={wrapperRef}>
       <ConnectPickerContext.Provider value={setConnectFrom}>
       <ReactFlow
+        colorMode={dark ? 'dark' : 'light'}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
@@ -111,6 +107,41 @@ export function Canvas({
         <Controls />
       </ReactFlow>
       </ConnectPickerContext.Provider>
+      {nodes.length > 0 && (
+        <button
+          type="button"
+          className="canvas-add-node"
+          title="Add node"
+          aria-label="Add node"
+          onClick={() => setFreePickOpen(true)}
+        >
+          ＋
+        </button>
+      )}
+      <button
+        type="button"
+        className="canvas-theme-toggle"
+        title={dark ? 'Switch canvas to light' : 'Switch canvas to dark'}
+        aria-label="Toggle canvas theme"
+        onClick={toggleDark}
+      >
+        {dark ? '☀️' : '🌙'}
+      </button>
+      {freePickOpen && (
+        <NodePicker
+          nodeDefs={nodeDefs}
+          connectors={connectors}
+          agentPresets={agentPresets}
+          tools={tools}
+          mcpServers={mcpServers}
+          flows={flows}
+          onClose={() => setFreePickOpen(false)}
+          onPick={(picked) => {
+            addAtCenter(picked)
+            setFreePickOpen(false)
+          }}
+        />
+      )}
       {nodes.length === 0 && (
         <FirstStepPicker
           nodeDefs={nodeDefs}

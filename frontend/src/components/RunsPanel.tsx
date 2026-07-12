@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { cancelRun, deleteRun, getRun, listRuns, rerunRun } from '../api'
+import { cancelRun, deleteRun, getRun, listRuns, rerunRun, retryRunFromFailure } from '../api'
 import type { RunRecord } from '../types'
 
 function formatTime(iso?: string | null): string {
@@ -59,6 +59,16 @@ export function RunsPanel({ refreshKey }: { refreshKey: number }) {
     setBusy(true)
     try {
       await rerunRun(runId)
+      refresh()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const onRetryFromFailure = async (runId: string) => {
+    setBusy(true)
+    try {
+      await retryRunFromFailure(runId)
       refresh()
     } finally {
       setBusy(false)
@@ -128,6 +138,16 @@ export function RunsPanel({ refreshKey }: { refreshKey: number }) {
                       >
                         ↻
                       </button>
+                      {run.status === 'error' && (
+                        <button
+                          className="refresh-button rerun-button"
+                          disabled={busy}
+                          title="Retry from the failed node — successful nodes replay their previous outputs"
+                          onClick={() => onRetryFromFailure(run.run_id)}
+                        >
+                          ⤻
+                        </button>
+                      )}
                       <button
                         className="danger"
                         disabled={busy}

@@ -34,6 +34,10 @@ def client(tmp_path, monkeypatch):
 
     monkeypatch.setattr(credentials, "_store", None)
 
+    import app.oauth_flow as oauth_flow
+
+    oauth_flow.reset_pending()
+
     import app.mcp_registry as mcp_registry
 
     monkeypatch.setattr(mcp_registry, "_store", None)

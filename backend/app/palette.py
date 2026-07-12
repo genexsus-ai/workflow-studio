@@ -152,6 +152,18 @@ NODE_TYPE_DEFS: list[dict[str, Any]] = [
                 "min": 30,
             },
             {
+                "name": "cron",
+                "type": "string",
+                "required": False,
+                "placeholder": "0 9 * * 1-5 — cron expression, overrides interval",
+            },
+            {
+                "name": "timezone",
+                "type": "string",
+                "required": False,
+                "placeholder": "America/New_York — IANA timezone for cron (default UTC)",
+            },
+            {
                 "name": "webhook_provider",
                 "type": "select",
                 "required": False,
@@ -179,6 +191,36 @@ NODE_TYPE_DEFS: list[dict[str, Any]] = [
         "description": "Workflow exit point; captures the final state.",
         "color": "#22c55e",
         "config_fields": [],
+    },
+    {
+        "type": "human",
+        "label": "Human approval",
+        "description": (
+            "Pauses the run until a person responds in the Run panel (or via "
+            "the API). Later nodes can reference {{ <id>.response }}."
+        ),
+        "color": "#f59e0b",
+        "config_fields": [
+            {
+                "name": "prompt",
+                "type": "string",
+                "required": False,
+                "placeholder": "Approve {{ input.doc }}? — templates allowed",
+            },
+            {
+                "name": "timeout_seconds",
+                "type": "number",
+                "required": False,
+                "min": 1,
+                "placeholder": "wait forever if empty",
+            },
+            {
+                "name": "default_response",
+                "type": "string",
+                "required": False,
+                "placeholder": "used when the timeout expires",
+            },
+        ],
     },
     {
         "type": "agent",

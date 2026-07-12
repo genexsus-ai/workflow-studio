@@ -3,6 +3,7 @@ export const NODE_ICONS: Record<string, string> = {
   trigger: '⚡',
   input: '📥',
   output: '📤',
+  human: '🙋',
   agent: '🤖',
   tool: '🛠️',
   connector: '🔌',

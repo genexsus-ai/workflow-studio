@@ -55,7 +55,13 @@ export function StudioNode({ id, data, selected }: NodeProps<StudioNodeType>) {
           ? [data.config.connector, data.config.action].filter(Boolean).join(' · ') || undefined
           : data.nodeType === 'trigger'
             ? data.config.trigger_kind === 'schedule'
-              ? `every ${String(data.config.interval_seconds ?? 3600)}s`
+              ? data.config.cron
+                ? `cron ${String(data.config.cron)}${
+                    data.config.timezone && data.config.timezone !== 'UTC'
+                      ? ` · ${String(data.config.timezone)}`
+                      : ''
+                  }`
+                : `every ${String(data.config.interval_seconds ?? 3600)}s`
               : 'webhook'
             : data.nodeType === 'model'
               ? (data.config.llm_model as string | undefined)

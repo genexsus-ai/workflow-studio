@@ -57,6 +57,9 @@ def create_app() -> FastAPI:
         from fastapi.responses import JSONResponse
 
         hooks_prefix = f"{settings.api_prefix}/hooks/"
+        # Browser redirect from the OAuth provider: can't carry our header.
+        # Safe without it — the single-use state nonce authenticates the request.
+        oauth_callback_path = f"{settings.api_prefix}/oauth/callback"
 
         @app.middleware("http")
         async def require_token(request, call_next):
@@ -64,6 +67,7 @@ def create_app() -> FastAPI:
             needs_auth = (
                 path.startswith(settings.api_prefix)
                 and not path.startswith(hooks_prefix)
+                and path != oauth_callback_path
                 and request.method != "OPTIONS"
             )
             if needs_auth and request.headers.get("X-Studio-Token") != settings.studio_api_token:

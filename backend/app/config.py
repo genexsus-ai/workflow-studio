@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # this value in the X-Studio-Token header.
     studio_api_token: str | None = None
 
+    # Externally reachable base URL of this backend — used to build the
+    # OAuth redirect URI registered with providers.
+    public_base_url: str = "http://localhost:8000"
+
     data_dir: Path = BACKEND_ROOT / "data"
 
 

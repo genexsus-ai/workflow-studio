@@ -192,7 +192,14 @@ def _automation_from_trigger(trigger: dict[str, Any] | None) -> AutomationConfig
     config = trigger.get("config", {}) or {}
     if kind == "schedule":
         interval = int(config.get("interval_seconds", 3600))
-        return AutomationConfig(schedule_enabled=True, interval_seconds=interval)
+        cron = str(config.get("cron") or "").strip() or None
+        timezone = str(config.get("timezone") or "").strip() or "UTC"
+        return AutomationConfig(
+            schedule_enabled=True,
+            interval_seconds=interval,
+            schedule_cron=cron,
+            schedule_timezone=timezone,
+        )
     if kind == "webhook":
         # Flag the intent; the token is provisioned when the user enables
         # automation on the saved workflow.
@@ -216,6 +223,10 @@ def _trigger_node_dict(
     node_config: dict[str, Any] = {"trigger_kind": kind}
     if kind == "schedule":
         node_config["interval_seconds"] = int(config.get("interval_seconds", 3600))
+        if str(config.get("cron") or "").strip():
+            node_config["cron"] = str(config["cron"]).strip()
+        if str(config.get("timezone") or "").strip():
+            node_config["timezone"] = str(config["timezone"]).strip()
     else:
         node_config["webhook_provider"] = config.get("provider", "generic")
         if config.get("event_filter"):

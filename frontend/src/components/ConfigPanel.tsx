@@ -1,12 +1,12 @@
 import type { Edge } from '@xyflow/react'
 import { useEffect, useState } from 'react'
 
-import { listMcpServerTools } from '../api'
+import { listMcpServerTools, testNode } from '../api'
 
 import { Combobox } from './Combobox'
 
 import type { StudioNode } from '../lib/translate'
-import type { ConfigField, ConnectorDef, CredentialSummary, FlowAgentSpec, FlowPatternDef, McpServerSummary, McpToolInfo, ModelOption, NodeResult, NodeTypeDef, ToolDef, WorkflowSummary } from '../types'
+import type { ConfigField, ConnectorDef, CredentialSummary, FlowAgentSpec, FlowPatternDef, McpServerSummary, McpToolInfo, ModelOption, NodeResult, NodeTestResult, NodeTypeDef, ToolDef, WorkflowSummary } from '../types'
 
 interface ConfigPanelProps {
   node: StudioNode | null
@@ -405,11 +405,32 @@ export function ConfigPanel({
         </p>
       )}
       {['agent', 'tool', 'connector', 'mcp'].includes(node.data.nodeType) && (
-        <ExecutionPolicyFields
-          policy={(config.execution as Record<string, unknown> | undefined) ?? {}}
-          onChange={(policy) => setValue('execution', policy)}
-        />
+        <>
+          <label className="field">
+            <span>Run once per item (optional)</span>
+            <input
+              value={String(config.for_each ?? '')}
+              placeholder="e.g. {{ fetch.data.items }}"
+              spellCheck={false}
+              onChange={(event) => setValue('for_each', event.target.value || undefined)}
+            />
+          </label>
+          {Boolean(config.for_each) && (
+            <p className="config-subtitle">
+              This node runs once per list element — reference the current one
+              with <code>{'{{ item }}'}</code> / <code>{'{{ item_index }}'}</code>.
+              Results collect under <code>{`{{ ${node.id}.items }}`}</code>.
+            </p>
+          )}
+          <ExecutionPolicyFields
+            policy={(config.execution as Record<string, unknown> | undefined) ?? {}}
+            onChange={(policy) => setValue('execution', policy)}
+          />
+        </>
       )}
+      {['agent', 'tool', 'connector', 'mcp', 'subworkflow', 'flow'].includes(
+        node.data.nodeType,
+      ) && <NodeTestSection workflowId={currentWorkflowId} nodeId={node.id} />}
       {nodeResult && (
         <div className="node-output">
           <h3>
@@ -429,6 +450,60 @@ export function ConfigPanel({
         Delete node
       </button>
     </aside>
+  )
+}
+
+function NodeTestSection({
+  workflowId,
+  nodeId,
+}: {
+  workflowId: string | null
+  nodeId: string
+}) {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<NodeTestResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  // Stale results from a previously selected node aren't meaningful
+  useEffect(() => {
+    setResult(null)
+    setError(null)
+  }, [nodeId])
+
+  const run = async () => {
+    if (!workflowId) return
+    setBusy(true)
+    setError(null)
+    try {
+      setResult(await testNode(workflowId, nodeId))
+    } catch (err) {
+      setResult(null)
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="node-test-result">
+      <button onClick={run} disabled={busy || !workflowId} title={workflowId ? undefined : 'Save the workflow first'}>
+        {busy ? 'Testing…' : '▶ Test this node'}
+      </button>
+      {!workflowId && <p className="config-subtitle">Save the workflow to test nodes.</p>}
+      {error && <p className="error-text">{error}</p>}
+      {result && (
+        <>
+          <p className="config-subtitle">
+            {result.status === 'success' ? '✓ succeeded' : `✗ ${result.status}`}
+            {result.upstream_from_run
+              ? ` — upstream data from run ${result.upstream_from_run.slice(0, 8)}`
+              : ' — no prior run; upstream references may not resolve'}
+          </p>
+          {result.error && <p className="error-text">{result.error}</p>}
+          <pre>{JSON.stringify(result.output, null, 2)}</pre>
+        </>
+      )}
+    </div>
   )
 }
 

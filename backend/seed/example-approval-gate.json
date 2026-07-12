@@ -1,0 +1,36 @@
+{
+  "id": "example-approval-gate",
+  "name": "Example: Human approval gate",
+  "description": "Human-in-the-loop: the run pauses at the approval node until someone responds in the Run panel (Approve/Reject or free text). The response is available to later nodes as {{ approval.response }}. A 5-minute timeout falls back to 'rejected'. Run it with input like {\"amount\": 2500}. No API keys needed.",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "input",
+      "label": "Input",
+      "position": { "x": 40, "y": 160 },
+      "config": {}
+    },
+    {
+      "id": "approval",
+      "type": "human",
+      "label": "Manager sign-off",
+      "position": { "x": 280, "y": 160 },
+      "config": {
+        "prompt": "Approve spending {{ input.amount | default:0 }}?",
+        "timeout_seconds": 300,
+        "default_response": "rejected"
+      }
+    },
+    {
+      "id": "end",
+      "type": "output",
+      "label": "Output",
+      "position": { "x": 520, "y": 160 },
+      "config": {}
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "start", "target": "approval", "condition": null, "parallel": false },
+    { "id": "e2", "source": "approval", "target": "end", "condition": null, "parallel": false }
+  ]
+}

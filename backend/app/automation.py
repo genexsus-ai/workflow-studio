@@ -63,8 +63,13 @@ def apply_trigger_nodes(
             interval = int(config.get("interval_seconds") or 3600)
         except (TypeError, ValueError):
             interval = 3600
+        cron = str(config.get("cron") or "").strip() or None
+        timezone = str(config.get("timezone") or "").strip() or "UTC"
         doc.automation = AutomationConfig(
-            schedule_enabled=True, interval_seconds=interval
+            schedule_enabled=True,
+            interval_seconds=interval,
+            schedule_cron=cron,
+            schedule_timezone=timezone,
         )
         return True
     if kind == "webhook":
@@ -103,10 +108,14 @@ class ScheduleManager:
     async def enable(self, doc: WorkflowDoc) -> None:
         assert doc.id is not None
         await self.disable(doc.id)
+        cron = (doc.automation.schedule_cron or "").strip() or None
+        timezone = (doc.automation.schedule_timezone or "").strip() or "UTC"
         interval = max(int(doc.automation.interval_seconds or 60), 1)
         trigger = ScheduleTrigger(
             trigger_id=f"studio-schedule-{doc.id}",
-            interval_seconds=interval,
+            cron=cron,
+            interval_seconds=None if cron else interval,
+            timezone=timezone,
         )
         workflow_id = doc.id
 
@@ -121,7 +130,17 @@ class ScheduleManager:
         trigger.on_event(on_event)
         await trigger.start()
         self._triggers[workflow_id] = trigger
-        logger.info("Schedule enabled for workflow %s every %ss", workflow_id, interval)
+        if cron:
+            logger.info(
+                "Schedule enabled for workflow %s (cron: %s, tz: %s)",
+                workflow_id,
+                cron,
+                timezone,
+            )
+        else:
+            logger.info(
+                "Schedule enabled for workflow %s every %ss", workflow_id, interval
+            )
 
     async def disable(self, workflow_id: str) -> None:
         trigger = self._triggers.pop(workflow_id, None)

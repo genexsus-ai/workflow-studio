@@ -160,8 +160,9 @@ def translate(doc: WorkflowDoc) -> tuple[list[dict[str, Any]], list[dict[str, An
                     "params": node.config.get("params") or {},
                 },
             }
-            if node.config.get("execution"):
-                config["execution"] = node.config["execution"]
+            for passthrough in ("execution", "for_each"):
+                if node.config.get(passthrough):
+                    config[passthrough] = node.config[passthrough]
             nodes.append({"id": node.id, "type": "tool", "config": config})
         elif node.type == "mcp":
             config = {
@@ -172,8 +173,9 @@ def translate(doc: WorkflowDoc) -> tuple[list[dict[str, Any]], list[dict[str, An
                     "params": node.config.get("params") or {},
                 },
             }
-            if node.config.get("execution"):
-                config["execution"] = node.config["execution"]
+            for passthrough in ("execution", "for_each"):
+                if node.config.get(passthrough):
+                    config[passthrough] = node.config[passthrough]
             nodes.append({"id": node.id, "type": "tool", "config": config})
         elif node.type == "agent":
             config = dict(node.config)
@@ -240,6 +242,61 @@ def resolve_subgraphs(doc: WorkflowDoc) -> dict[str, dict[str, Any]]:
     return subgraphs
 
 
+async def test_single_node(
+    doc: WorkflowDoc,
+    node_id: str,
+    input_data: dict[str, Any],
+    upstream_results: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Execute one node of a workflow in isolation (n8n-style node testing).
+
+    The node runs with ``input_data`` as the run input and ``upstream_results``
+    ({node_id: output}) seeded into state, so its ``{{ other_node.* }}``
+    templates resolve exactly as they would mid-run.
+    """
+    from genxai.core.graph.executor import execute_workflow_async
+
+    _apply_api_keys()
+    nodes, _ = translate(doc)
+    target = next((node for node in nodes if node["id"] == node_id), None)
+    if target is None:
+        raise ValueError(
+            f"Node '{node_id}' is not an executable flow step (triggers and "
+            "attached capability nodes cannot be tested in isolation)"
+        )
+    return await execute_workflow_async(
+        nodes=[target],
+        edges=[],
+        input_data=input_data,
+        extra_state=dict(upstream_results or {}),
+        subgraphs=resolve_subgraphs(doc) or None,
+    )
+
+
+def cron_error(expression: str) -> str | None:
+    """Why a crontab expression is invalid, or None if it parses."""
+    try:
+        from apscheduler.triggers.cron import CronTrigger
+    except ImportError:
+        return None
+    try:
+        CronTrigger.from_crontab(expression)
+    except ValueError as exc:
+        return str(exc) or "invalid cron expression"
+    return None
+
+
+def timezone_error(name: str) -> str | None:
+    """Why an IANA timezone name is invalid, or None if it resolves."""
+    from zoneinfo import ZoneInfo
+
+    try:
+        ZoneInfo(name)
+    except Exception:
+        return f"unknown timezone '{name}' (use an IANA name like 'America/New_York')"
+    return None
+
+
 def validate(doc: WorkflowDoc) -> ValidationResult:
     """Structural validation without executing anything."""
     issues: list[ValidationIssue] = []
@@ -278,6 +335,23 @@ def validate(doc: WorkflowDoc) -> ValidationResult:
                     node_id=node.id,
                 )
             )
+        if node.type == "trigger" and node.config.get("trigger_kind") == "schedule":
+            cron = str(node.config.get("cron") or "").strip()
+            problem = cron_error(cron) if cron else None
+            if problem:
+                issues.append(
+                    ValidationIssue(
+                        level="error",
+                        message=f"Invalid cron expression '{cron}': {problem}",
+                        node_id=node.id,
+                    )
+                )
+            tz = str(node.config.get("timezone") or "").strip()
+            tz_problem = timezone_error(tz) if tz else None
+            if tz_problem:
+                issues.append(
+                    ValidationIssue(level="error", message=tz_problem, node_id=node.id)
+                )
         if node.type == "agent" and not node.config.get("role"):
             issues.append(
                 ValidationIssue(

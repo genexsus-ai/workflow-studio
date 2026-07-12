@@ -13,6 +13,7 @@ import '@xyflow/react/dist/style.css'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import * as api from './api'
+import { AppSidebar, type AppId } from './components/AppSidebar'
 import { AutomationPanel } from './components/AutomationPanel'
 import type { PickedNode } from './components/NodePicker'
 import { Canvas } from './components/Canvas'
@@ -20,7 +21,6 @@ import { ConfigPanel } from './components/ConfigPanel'
 import { CredentialsPanel } from './components/CredentialsPanel'
 import { GenerateDialog } from './components/GenerateDialog'
 import { McpServersPanel } from './components/McpServersPanel'
-import { Palette } from './components/Palette'
 import { RunPanel } from './components/RunPanel'
 import { RunsPanel } from './components/RunsPanel'
 import { Toolbar } from './components/Toolbar'
@@ -41,6 +41,8 @@ export default function App() {
   const [generateOpen, setGenerateOpen] = useState(false)
   const [lastGenerationId, setLastGenerationId] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
+  const [activeApp, setActiveApp] = useState<AppId>('workflow')
+  const [pinnedInput, setPinnedInput] = useState<Record<string, unknown> | null>(null)
   const [runEvents, setRunEvents] = useState<RunEvent[]>([])
   const [nodeResults, setNodeResults] = useState<Record<string, NodeResult>>({})
   const defaultAutomation: AutomationConfig = {
@@ -48,6 +50,8 @@ export default function App() {
     webhook_token: null,
     schedule_enabled: false,
     interval_seconds: 300,
+    schedule_cron: null,
+    schedule_timezone: 'UTC',
   }
   const [automation, setAutomation] = useState<AutomationConfig>(defaultAutomation)
   const [sharedMemory, setSharedMemory] = useState(false)
@@ -424,8 +428,9 @@ export default function App() {
       ...flowToDoc(workflowName, '', nodes, edges, currentId),
       automation,
       shared_memory: sharedMemory,
+      pinned_input: pinnedInput,
     }),
-    [workflowName, nodes, edges, currentId, automation, sharedMemory],
+    [workflowName, nodes, edges, currentId, automation, sharedMemory, pinnedInput],
   )
 
   // Input fields the workflow references via {{ input.* }} templates —
@@ -471,6 +476,7 @@ export default function App() {
         setCurrentId(doc.id ?? id)
         setAutomation(doc.automation ?? defaultAutomation)
         setSharedMemory(Boolean(doc.shared_memory))
+        setPinnedInput(doc.pinned_input ?? null)
         setDirty(false)
         setSelectedNode(null)
         setSelectedEdge(null)
@@ -492,6 +498,7 @@ export default function App() {
         setCurrentId(doc.id ?? null)
         setAutomation(doc.automation ?? defaultAutomation)
         setSharedMemory(Boolean(doc.shared_memory))
+        setPinnedInput(doc.pinned_input ?? null)
         setDirty(false)
         setSelectedNode(null)
         setSelectedEdge(null)
@@ -515,6 +522,7 @@ export default function App() {
       setLastGenerationId(result.generation_id)
       setAutomation(doc.automation ?? defaultAutomation)
       setSharedMemory(Boolean(doc.shared_memory))
+      setPinnedInput(doc.pinned_input ?? null)
       setDirty(true)
       setSelectedNode(null)
       setSelectedEdge(null)
@@ -549,6 +557,7 @@ export default function App() {
     setSelectedNode(null)
     setSelectedEdge(null)
     setAutomation(defaultAutomation)
+    setPinnedInput(null)
     setDirty(false)
   }, [])
 
@@ -617,6 +626,22 @@ export default function App() {
 
   return (
     <ReactFlowProvider>
+      <div className="app-shell">
+        <AppSidebar active={activeApp} onSelect={setActiveApp} />
+        {activeApp !== 'workflow' ? (
+          <div className="app app-placeholder">
+            <div className="app-placeholder-body">
+              <h1>{activeApp === 'analytics' ? '📊 Analytics' : '🧪 Data Science'}</h1>
+              <p>
+                This workspace is on the roadmap. Workflow Studio is the first
+                GenXAI app — more are coming.
+              </p>
+              <button onClick={() => setActiveApp('workflow')}>
+                ← Back to Workflow Studio
+              </button>
+            </div>
+          </div>
+        ) : (
       <div className="app">
         <Toolbar
           workflowName={workflowName}
@@ -648,7 +673,6 @@ export default function App() {
           </div>
         )}
         <div className="workspace">
-          <Palette nodeTypes={palette?.node_types ?? []} />
           <Canvas
             nodes={nodes}
             edges={edges}
@@ -692,6 +716,16 @@ export default function App() {
               error={runError}
               models={palette?.models ?? []}
               suggestedInput={suggestedInput}
+              pinnedInput={pinnedInput}
+              onPin={(input) => {
+                setPinnedInput(input)
+                setDirty(true)
+                setBanner(
+                  input
+                    ? 'Input pinned — save the workflow to persist it'
+                    : 'Pinned input removed — save the workflow to persist',
+                )
+              }}
               onClose={() => setRunOpen(false)}
               onStart={onStartRun}
             />
@@ -714,6 +748,8 @@ export default function App() {
             <RunsPanel refreshKey={runsRefreshKey} />
           </div>
         </div>
+      </div>
+        )}
       </div>
     </ReactFlowProvider>
   )

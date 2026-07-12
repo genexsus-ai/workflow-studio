@@ -4,6 +4,8 @@ import type {
   CredentialSummary,
   McpServerSummary,
   McpToolInfo,
+  NodeTestResult,
+  OAuthProvidersResponse,
   Palette,
   RunEvent,
   ValidationResult,
@@ -201,10 +203,46 @@ export const updateAutomation = (id: string, config: AutomationConfig) =>
 
 export const listRuns = () => fetch(`${API}/runs`).then((r) => json<RunRecord[]>(r))
 
+export const retryRunFromFailure = (runId: string) =>
+  fetch(`${API}/runs/${runId}/retry`, { method: 'POST' }).then((r) =>
+    json<{ run_id: string }>(r),
+  )
+
+export const submitHumanInput = (runId: string, nodeId: string, response: unknown) =>
+  fetch(`${API}/runs/${runId}/input`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ node_id: nodeId, response }),
+  }).then((r) => json<{ status: string }>(r))
+
+export const testNode = (workflowId: string, nodeId: string, input?: Record<string, unknown>) =>
+  fetch(`${API}/workflows/${workflowId}/test-node`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ node_id: nodeId, input: input ?? {} }),
+  }).then((r) => json<NodeTestResult>(r))
+
 export const apiBase = API
 
 export const listCredentials = () =>
   fetch(`${API}/credentials`).then((r) => json<CredentialSummary[]>(r))
+
+export const listOAuthProviders = () =>
+  fetch(`${API}/oauth/providers`).then((r) => json<OAuthProvidersResponse>(r))
+
+export const saveOAuthApp = (provider: string, clientId: string, clientSecret: string) =>
+  fetch(`${API}/oauth/apps/${provider}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
+  })
+
+export const startOAuth = (provider: string, credentialName: string) =>
+  fetch(`${API}/oauth/${provider}/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ credential_name: credentialName }),
+  }).then((r) => json<{ authorize_url: string }>(r))
 
 export const createCredential = (name: string, connectorType: string, config: Record<string, string>) =>
   fetch(`${API}/credentials`, {

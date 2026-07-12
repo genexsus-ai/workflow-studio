@@ -34,15 +34,26 @@ MAX_PERSISTED_EVENTS = 500
 
 
 class _Job:
-    def __init__(self, run_id: str, doc: WorkflowDoc, input_data: dict[str, Any], model_override: str | None):
+    def __init__(
+        self,
+        run_id: str,
+        doc: WorkflowDoc,
+        input_data: dict[str, Any],
+        model_override: str | None,
+        resume_results: dict[str, Any] | None = None,
+    ):
         self.run_id = run_id
         self.doc = doc
         self.input_data = input_data
         self.model_override = model_override
+        # Prior successful node outputs to replay instead of re-executing
+        self.resume_results = resume_results
         self.cancelled = False
         self.cancel_event = asyncio.Event()
         self.buffer: list[dict[str, Any]] = []  # events so far (for late subscribers)
         self.done = False
+        # Human nodes waiting for a response: node_id -> {"prompt", "future"}
+        self.pending_input: dict[str, dict[str, Any]] = {}
 
 
 def _cap(value: Any) -> Any:
@@ -115,6 +126,7 @@ class RunManager:
         input_data: dict[str, Any],
         trigger: str = "manual",
         model_override: str | None = None,
+        resume_results: dict[str, Any] | None = None,
     ) -> str:
         """Create a run record, enqueue it, return its run_id."""
         store = get_execution_store()
@@ -130,9 +142,47 @@ class RunManager:
                 "model_override": model_override,
             },
         )
-        self._jobs[run_id] = _Job(run_id, doc, input_data, model_override)
+        self._jobs[run_id] = _Job(
+            run_id, doc, input_data, model_override, resume_results=resume_results
+        )
         self._queue.put_nowait(run_id)
         return run_id
+
+    def retry_from_failure(self, run_id: str) -> str | None:
+        """Re-run a failed run, replaying its successful nodes' outputs.
+
+        Nodes that completed in the source run don't re-execute — their
+        outputs are replayed from the run record — so execution effectively
+        resumes at the failed node. Truncated outputs can't be replayed
+        faithfully, so those nodes re-execute.
+        """
+        record = get_execution_store().get(run_id)
+        if record is None:
+            return None
+        snapshot = (record.metadata or {}).get("workflow_snapshot")
+        if not snapshot:
+            return None
+        doc = WorkflowDoc.model_validate(snapshot)
+        input_data = (record.metadata or {}).get("input") or {}
+        model_override = (record.metadata or {}).get("model_override")
+
+        node_results = (record.result or {}).get("node_results") or {}
+        resume_results = {
+            node_id: entry.get("output")
+            for node_id, entry in node_results.items()
+            if entry.get("status") == "completed"
+            and not (
+                isinstance(entry.get("output"), dict)
+                and entry["output"].get("truncated") is True
+            )
+        }
+        return self.submit(
+            doc,
+            input_data,
+            trigger=f"retry:{run_id[:8]}",
+            model_override=model_override,
+            resume_results=resume_results or None,
+        )
 
     def rerun(self, run_id: str) -> str | None:
         """Submit a fresh run from a past run's stored snapshot."""
@@ -183,6 +233,36 @@ class RunManager:
         for queue in self._subscribers.get(job.run_id, []):
             queue.put_nowait(event)
 
+    # ---------------------------------------------------------- human input
+
+    def list_pending_input(self, run_id: str) -> list[dict[str, Any]]:
+        """Human nodes of this run currently waiting for a response."""
+        job = self._jobs.get(run_id)
+        if job is None:
+            return []
+        return [
+            {"node_id": node_id, "prompt": entry["prompt"]}
+            for node_id, entry in job.pending_input.items()
+        ]
+
+    def respond(self, run_id: str, node_id: str, response: Any) -> bool:
+        """Deliver a person's response to a waiting human node."""
+        job = self._jobs.get(run_id)
+        if job is None:
+            return False
+        entry = job.pending_input.get(node_id)
+        if entry is None or entry["future"].done():
+            return False
+        entry["future"].set_result(response)
+        self._publish(
+            job,
+            {
+                "event": "human_input_received",
+                "data": {"run_id": run_id, "node_id": node_id},
+            },
+        )
+        return True
+
     # -------------------------------------------------------------- control
 
     async def cancel(self, run_id: str) -> bool:
@@ -232,6 +312,21 @@ class RunManager:
             node_events.append(event)
             self._publish(job, {"event": "node", "data": event})
 
+        async def human_input_provider(node_id: str, prompt: str) -> Any:
+            future: asyncio.Future = asyncio.get_running_loop().create_future()
+            job.pending_input[node_id] = {"prompt": prompt, "future": future}
+            self._publish(
+                job,
+                {
+                    "event": "human_input_required",
+                    "data": {"run_id": job.run_id, "node_id": node_id, "prompt": prompt},
+                },
+            )
+            try:
+                return await future
+            finally:
+                job.pending_input.pop(node_id, None)
+
         exec_task = asyncio.create_task(
             execute_workflow_async(
                 nodes=nodes,
@@ -241,6 +336,12 @@ class RunManager:
                 event_callback=on_node_event,
                 shared_memory=job.doc.shared_memory,
                 subgraphs=resolve_subgraphs(job.doc) or None,
+                human_input_provider=human_input_provider,
+                extra_state=(
+                    {"_resume_results": job.resume_results}
+                    if job.resume_results
+                    else None
+                ),
             )
         )
         cancel_waiter = asyncio.create_task(job.cancel_event.wait())

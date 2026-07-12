@@ -20,6 +20,9 @@ export function AutomationPanel({
 }: AutomationPanelProps) {
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
+  // Drafts so partial cron/timezone text isn't validated on every keystroke
+  const [cronDraft, setCronDraft] = useState<string | null>(null)
+  const [tzDraft, setTzDraft] = useState<string | null>(null)
 
   const sharedMemoryToggle = (
     <label className="field field-checkbox" title="All agents in a run share a common memory bus">
@@ -140,18 +143,58 @@ export function AutomationPanel({
         <span>Schedule — run automatically</span>
       </label>
       {automation.schedule_enabled && (
-        <label className="field">
-          <span>Every (seconds)</span>
-          <input
-            type="number"
-            min={5}
-            disabled={busy}
-            value={automation.interval_seconds}
-            onChange={(event) =>
-              apply({ ...automation, interval_seconds: Math.max(5, Number(event.target.value)) })
-            }
-          />
-        </label>
+        <>
+          <label className="field">
+            <span>Cron expression (optional)</span>
+            <input
+              disabled={busy}
+              value={cronDraft ?? automation.schedule_cron ?? ''}
+              placeholder="e.g. 0 9 * * 1-5 — overrides interval"
+              onChange={(event) => setCronDraft(event.target.value)}
+              onBlur={() => {
+                if (cronDraft === null) return
+                const cron = cronDraft.trim() || null
+                setCronDraft(null)
+                if (cron !== (automation.schedule_cron ?? null)) {
+                  apply({ ...automation, schedule_cron: cron })
+                }
+              }}
+            />
+          </label>
+          {automation.schedule_cron && (
+            <label className="field">
+              <span>Timezone (IANA)</span>
+              <input
+                disabled={busy}
+                value={tzDraft ?? automation.schedule_timezone ?? 'UTC'}
+                placeholder="e.g. America/New_York"
+                onChange={(event) => setTzDraft(event.target.value)}
+                onBlur={() => {
+                  if (tzDraft === null) return
+                  const timezone = tzDraft.trim() || 'UTC'
+                  setTzDraft(null)
+                  if (timezone !== (automation.schedule_timezone ?? 'UTC')) {
+                    apply({ ...automation, schedule_timezone: timezone })
+                  }
+                }}
+              />
+            </label>
+          )}
+          {!automation.schedule_cron && (
+            <label className="field">
+              <span>Every (seconds)</span>
+              <input
+                type="number"
+                min={5}
+                disabled={busy}
+                value={automation.interval_seconds}
+                onChange={(event) =>
+                  apply({ ...automation, interval_seconds: Math.max(5, Number(event.target.value)) })
+                }
+              />
+            </label>
+          )}
+        </>
       )}
     </details>
   )

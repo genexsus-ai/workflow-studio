@@ -29,10 +29,20 @@ def reset_credential_store() -> None:
 
 
 def safe_listing() -> list[dict]:
-    """Credential names and types only — never the secret values."""
+    """Credential names and types only — never the secret values.
+
+    Reserved entries (OAuth app registrations) are internal and excluded.
+    """
+    from app.oauth_providers import OAUTH_APP_PREFIX
+
     return [
-        {"name": entry.name, "connector_type": entry.connector_type}
+        {
+            "name": entry.name,
+            "connector_type": entry.connector_type,
+            "auth_kind": entry.config.get("auth_kind", "token"),
+        }
         for entry in get_credential_store().list().values()
+        if not entry.name.startswith(OAUTH_APP_PREFIX)
     ]
 
 

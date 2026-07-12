@@ -8,6 +8,7 @@ NODE_TYPES = (
     "trigger",
     "input",
     "output",
+    "human",
     "agent",
     "tool",
     "connector",
@@ -55,6 +56,10 @@ class AutomationConfig(BaseModel):
     webhook_event_filter: str | None = None  # e.g. "issues.opened" or "issues"
     schedule_enabled: bool = False
     interval_seconds: int = 300
+    # Cron expression (crontab syntax); when set it wins over interval_seconds
+    schedule_cron: str | None = None
+    # IANA timezone the cron expression is evaluated in
+    schedule_timezone: str = "UTC"
 
 
 class WorkflowDoc(BaseModel):
@@ -66,6 +71,9 @@ class WorkflowDoc(BaseModel):
     automation: AutomationConfig = Field(default_factory=AutomationConfig)
     # Give all agents in a run a common SharedMemoryBus (framework feature)
     shared_memory: bool = False
+    # Sample run input pinned by the user (n8n-style): used to prefill manual
+    # runs and as the input for node tests when no explicit input is given
+    pinned_input: dict[str, Any] | None = None
 
 
 class WorkflowSummary(BaseModel):
@@ -78,6 +86,28 @@ class WorkflowSummary(BaseModel):
 class RunRequest(BaseModel):
     input: dict[str, Any] = Field(default_factory=dict)
     model_override: str | None = None
+
+
+class HumanInputResponse(BaseModel):
+    node_id: str
+    response: Any = None
+
+
+class OAuthAppConfig(BaseModel):
+    client_id: str
+    client_secret: str
+
+
+class OAuthStartRequest(BaseModel):
+    credential_name: str
+    scopes: list[str] | None = None
+
+
+class NodeTestRequest(BaseModel):
+    node_id: str
+    input: dict[str, Any] = Field(default_factory=dict)
+    # Upstream node outputs to seed state with; omitted = use the latest run's
+    upstream: dict[str, Any] | None = None
 
 
 class MCPServerCreate(BaseModel):

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { submitHumanInput } from '../api'
 import type { ModelOption, RunEvent } from '../types'
 
 interface RunPanelProps {
@@ -10,6 +11,9 @@ interface RunPanelProps {
   models: ModelOption[]
   /** Input skeleton derived from {{ input.* }} references in the workflow. */
   suggestedInput: Record<string, unknown> | null
+  /** Sample input pinned on the workflow (n8n-style); prefills the run input. */
+  pinnedInput: Record<string, unknown> | null
+  onPin: (input: Record<string, unknown> | null) => void
   onClose: () => void
   onStart: (input: Record<string, unknown>, modelOverride?: string) => void
 }
@@ -23,6 +27,8 @@ export function RunPanel({
   error,
   models,
   suggestedInput,
+  pinnedInput,
+  onPin,
   onClose,
   onStart,
 }: RunPanelProps) {
@@ -31,17 +37,20 @@ export function RunPanel({
   const [inputWarning, setInputWarning] = useState<string | null>(null)
   const [modelOverride, setModelOverride] = useState('')
 
-  // Each time the panel opens, pre-fill with the fields this workflow references
+  // Each time the panel opens, pre-fill with pinned data if present, else the
+  // fields this workflow references
   useEffect(() => {
     if (!open) return
     setInputError(null)
     setInputWarning(null)
     setInputText(
-      suggestedInput && Object.keys(suggestedInput).length > 0
-        ? JSON.stringify(suggestedInput, null, 2)
-        : GENERIC_INPUT,
+      pinnedInput
+        ? JSON.stringify(pinnedInput, null, 2)
+        : suggestedInput && Object.keys(suggestedInput).length > 0
+          ? JSON.stringify(suggestedInput, null, 2)
+          : GENERIC_INPUT,
     )
-  }, [open, suggestedInput])
+  }, [open, suggestedInput, pinnedInput])
 
   if (!open) return null
 
@@ -68,6 +77,36 @@ export function RunPanel({
   const finalEvent = events.find((event) => event.event === 'complete' || event.event === 'error')
   const result = finalEvent?.data.result as Record<string, unknown> | undefined
 
+  // Waiting human nodes, derived from the event stream: a request is pending
+  // until its response is delivered or the run reaches a terminal state.
+  const runId = events.find((event) => event.event === 'started')?.data.run_id as
+    | string
+    | undefined
+  const answered = new Set(
+    events
+      .filter((event) => event.event === 'human_input_received')
+      .map((event) => String(event.data.node_id)),
+  )
+  const pendingInput = finalEvent
+    ? []
+    : events
+        .filter((event) => event.event === 'human_input_required')
+        .map((event) => ({
+          nodeId: String(event.data.node_id),
+          prompt: String(event.data.prompt ?? 'Input required'),
+        }))
+        .filter((request) => !answered.has(request.nodeId))
+
+  const respond = async (nodeId: string, response: unknown) => {
+    if (!runId) return
+    try {
+      await submitHumanInput(runId, nodeId, response)
+      setInputError(null)
+    } catch (err) {
+      setInputError(`Could not deliver response: ${(err as Error).message}`)
+    }
+  }
+
   return (
     <section className="run-panel">
       <div className="run-panel-header">
@@ -89,6 +128,36 @@ export function RunPanel({
           This workflow expects: {requiredKeys.map((k) => `input.${k}`).join(', ')}
         </p>
       )}
+      <div className="pin-actions">
+        <button
+          disabled={running}
+          title="Save this input on the workflow as sample data (save workflow to persist)"
+          onClick={() => {
+            try {
+              const parsed = inputText.trim() ? JSON.parse(inputText) : {}
+              onPin(parsed)
+              setInputError(null)
+            } catch (err) {
+              setInputError(`Cannot pin invalid JSON: ${(err as Error).message}`)
+            }
+          }}
+        >
+          📌 Pin input
+        </button>
+        {pinnedInput && (
+          <>
+            <button
+              disabled={running}
+              onClick={() => setInputText(JSON.stringify(pinnedInput, null, 2))}
+            >
+              Reset to pinned
+            </button>
+            <button disabled={running} onClick={() => onPin(null)}>
+              Unpin
+            </button>
+          </>
+        )}
+      </div>
       {inputError && <p className="error-text">{inputError}</p>}
       {inputWarning && <p className="warning-text">⚠ {inputWarning}</p>}
       <label className="field">
@@ -107,6 +176,15 @@ export function RunPanel({
       </button>
 
       {error && <p className="error-text">{error}</p>}
+
+      {pendingInput.map((request) => (
+        <HumanInputPrompt
+          key={request.nodeId}
+          nodeId={request.nodeId}
+          prompt={request.prompt}
+          onRespond={respond}
+        />
+      ))}
 
       <div className="event-log">
         {events.map((event, index) => (
@@ -134,5 +212,65 @@ export function RunPanel({
         </details>
       )}
     </section>
+  )
+}
+
+function HumanInputPrompt({
+  nodeId,
+  prompt,
+  onRespond,
+}: {
+  nodeId: string
+  prompt: string
+  onRespond: (nodeId: string, response: unknown) => Promise<void>
+}) {
+  const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+
+  const send = async (response: unknown) => {
+    setSending(true)
+    try {
+      await onRespond(nodeId, response)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="human-input-prompt">
+      <p>
+        🙋 <strong>{nodeId}</strong>: {prompt}
+      </p>
+      <textarea
+        rows={2}
+        value={text}
+        placeholder="Type a response (JSON or plain text)…"
+        spellCheck={false}
+        onChange={(event) => setText(event.target.value)}
+      />
+      <div className="human-input-actions">
+        <button
+          className="primary"
+          disabled={sending}
+          onClick={() => {
+            let response: unknown = text
+            try {
+              response = JSON.parse(text)
+            } catch {
+              /* plain text response */
+            }
+            void send(response)
+          }}
+        >
+          Send
+        </button>
+        <button disabled={sending} onClick={() => void send('approved')}>
+          ✓ Approve
+        </button>
+        <button disabled={sending} onClick={() => void send('rejected')}>
+          ✗ Reject
+        </button>
+      </div>
+    </div>
   )
 }

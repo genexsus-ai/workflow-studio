@@ -28,6 +28,7 @@ export interface WorkflowDoc {
   edges: EdgeDoc[]
   automation?: AutomationConfig
   shared_memory?: boolean
+  pinned_input?: Record<string, unknown> | null
 }
 
 export interface WorkflowSummary {
@@ -127,8 +128,22 @@ export interface NodeResult {
 }
 
 export interface RunEvent {
-  event: 'started' | 'node' | 'complete' | 'error'
+  event:
+    | 'started'
+    | 'node'
+    | 'complete'
+    | 'error'
+    | 'human_input_required'
+    | 'human_input_received'
   data: Record<string, unknown>
+}
+
+export interface NodeTestResult {
+  status: string
+  node_id: string
+  output: unknown
+  error?: string | null
+  upstream_from_run?: string | null
 }
 
 export interface ValidationIssue {
@@ -150,6 +165,8 @@ export interface AutomationConfig {
   webhook_event_filter?: string | null
   schedule_enabled: boolean
   interval_seconds: number
+  schedule_cron?: string | null
+  schedule_timezone?: string
 }
 
 export interface RunRecord {
@@ -182,6 +199,7 @@ export interface ConnectorDef {
   label: string
   color: string
   icon?: string
+  oauth_provider?: string
   credential_fields: { name: string; secret?: boolean; example?: string }[]
   actions: Record<string, ConnectorActionDef>
 }
@@ -189,6 +207,20 @@ export interface ConnectorDef {
 export interface CredentialSummary {
   name: string
   connector_type: string
+  auth_kind?: string
+}
+
+export interface OAuthProviderInfo {
+  provider: string
+  label: string
+  connector_type: string
+  scopes: string[]
+  app_configured: boolean
+}
+
+export interface OAuthProvidersResponse {
+  redirect_uri: string
+  providers: OAuthProviderInfo[]
 }
 
 export interface McpServerSummary {
