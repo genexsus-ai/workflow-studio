@@ -217,6 +217,7 @@ export interface OAuthProviderInfo {
   label: string
   connector_type: string
   scopes: string[]
+  scope_presets?: Record<string, string[]>
   app_configured: boolean
 }
 

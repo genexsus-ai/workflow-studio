@@ -23,6 +23,9 @@ class OAuthProviderDef:
     # Whether the provider issues refresh tokens (P2 wires actual refresh)
     issues_refresh_tokens: bool = False
     extra_auth_params: dict[str, str] = field(default_factory=dict)
+    # Named scope sets users can pick from when connecting; "scopes" above
+    # is the default when no preset is chosen
+    scope_presets: dict[str, list[str]] = field(default_factory=dict)
 
 
 OAUTH_PROVIDERS: dict[str, OAuthProviderDef] = {
@@ -48,7 +51,27 @@ OAUTH_PROVIDERS: dict[str, OAuthProviderDef] = {
         issues_refresh_tokens=True,
         # offline: issue a refresh token; consent: re-issue it on reconnects
         extra_auth_params={"access_type": "offline", "prompt": "consent"},
+        scope_presets={
+            "Sheets & Drive": [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive.readonly",
+            ],
+            "Sheets only": ["https://www.googleapis.com/auth/spreadsheets"],
+            "Drive read-only": ["https://www.googleapis.com/auth/drive.readonly"],
+        },
     ),
+    "slack": OAuthProviderDef(
+        label="Slack",
+        auth_url="https://slack.com/oauth/v2/authorize",
+        token_url="https://slack.com/api/oauth.v2.access",
+        scopes=["chat:write", "channels:read"],
+        connector_type="slack",
+        token_field="bot_token",
+        issues_refresh_tokens=False,
+    ),
+    # Microsoft 365 is deliberately absent: there is no Microsoft connector
+    # in CONNECTOR_CLASSES yet, so a provider entry would mint credentials
+    # nothing can use. Add it together with the connector.
 }
 
 # Credential config keys that are OAuth bookkeeping, not connector kwargs

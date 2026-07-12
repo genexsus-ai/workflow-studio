@@ -17,6 +17,7 @@ export function CredentialsPanel({ connectors, credentials, onChanged }: Credent
   const [error, setError] = useState<string | null>(null)
   const [oauth, setOauth] = useState<OAuthProvidersResponse | null>(null)
   const [connecting, setConnecting] = useState(false)
+  const [scopePreset, setScopePreset] = useState('')
   const pollTimer = useRef<number | null>(null)
 
   useEffect(() => {
@@ -35,7 +36,10 @@ export function CredentialsPanel({ connectors, credentials, onChanged }: Credent
     if (!oauthProvider || !name) return
     try {
       setError(null)
-      const { authorize_url } = await api.startOAuth(oauthProvider.provider, name)
+      const scopes = scopePreset
+        ? oauthProvider.scope_presets?.[scopePreset]
+        : undefined
+      const { authorize_url } = await api.startOAuth(oauthProvider.provider, name, scopes)
       window.open(authorize_url, '_blank', 'width=600,height=750')
       setConnecting(true)
       // The popup stores the credential server-side; poll until it appears
@@ -139,6 +143,23 @@ export function CredentialsPanel({ connectors, credentials, onChanged }: Credent
               ))}
             </select>
           </label>
+          {oauthProvider &&
+            Object.keys(oauthProvider.scope_presets ?? {}).length > 1 && (
+              <label className="field">
+                <span>Access level</span>
+                <select
+                  value={scopePreset}
+                  onChange={(event) => setScopePreset(event.target.value)}
+                >
+                  <option value="">Default</option>
+                  {Object.keys(oauthProvider.scope_presets ?? {}).map((preset) => (
+                    <option key={preset} value={preset}>
+                      {preset}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           {oauthProvider && (
             <div className="oauth-connect">
               <button

@@ -463,6 +463,7 @@ def list_oauth_providers() -> dict:
                 "label": definition.label,
                 "connector_type": definition.connector_type,
                 "scopes": definition.scopes,
+                "scope_presets": definition.scope_presets,
                 "app_configured": bool((get_oauth_app(key) or {}).get("client_id")),
             }
             for key, definition in OAUTH_PROVIDERS.items()

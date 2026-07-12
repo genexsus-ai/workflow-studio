@@ -272,3 +272,67 @@ async def test_connector_execution_strips_oauth_meta_and_refreshes(client, monke
     assert "auth_kind" not in received
     assert "refresh_token" not in received
     assert "expires_at" not in received
+
+
+# ---------------------------------------------------------------------- P3
+
+
+def test_slack_provider_registered(client):
+    listing = client.get("/api/v1/oauth/providers").json()
+    slack = next(p for p in listing["providers"] if p["provider"] == "slack")
+    assert slack["connector_type"] == "slack"
+
+    client.put(
+        "/api/v1/oauth/apps/slack",
+        json={"client_id": "scid", "client_secret": "ssec"},
+    )
+    start = client.post(
+        "/api/v1/oauth/slack/start", json={"credential_name": "team-slack"}
+    ).json()
+    params = parse_qs(urlparse(start["authorize_url"]).query)
+    assert "chat:write" in params["scope"][0]
+    assert urlparse(start["authorize_url"]).netloc == "slack.com"
+
+
+def test_env_var_oauth_app_fallback(client, monkeypatch):
+    monkeypatch.setenv("GENXAI_OAUTH_GITHUB_CLIENT_ID", "env-cid")
+    monkeypatch.setenv("GENXAI_OAUTH_GITHUB_CLIENT_SECRET", "env-sec")
+
+    listing = client.get("/api/v1/oauth/providers").json()
+    github = next(p for p in listing["providers"] if p["provider"] == "github")
+    assert github["app_configured"] is True
+
+    start = client.post(
+        "/api/v1/oauth/github/start", json={"credential_name": "gh"}
+    ).json()
+    params = parse_qs(urlparse(start["authorize_url"]).query)
+    assert params["client_id"] == ["env-cid"]
+
+
+def test_stored_oauth_app_wins_over_env(client, monkeypatch):
+    monkeypatch.setenv("GENXAI_OAUTH_GITHUB_CLIENT_ID", "env-cid")
+    monkeypatch.setenv("GENXAI_OAUTH_GITHUB_CLIENT_SECRET", "env-sec")
+    _register_app(client)  # stores cid-123
+
+    start = client.post(
+        "/api/v1/oauth/github/start", json={"credential_name": "gh"}
+    ).json()
+    params = parse_qs(urlparse(start["authorize_url"]).query)
+    assert params["client_id"] == ["cid-123"]
+
+
+def test_scope_preset_override_reaches_authorize_url(client):
+    client.put(
+        "/api/v1/oauth/apps/google",
+        json={"client_id": "gcid", "client_secret": "gsec"},
+    )
+    listing = client.get("/api/v1/oauth/providers").json()
+    google = next(p for p in listing["providers"] if p["provider"] == "google")
+    preset = google["scope_presets"]["Sheets only"]
+
+    start = client.post(
+        "/api/v1/oauth/google/start",
+        json={"credential_name": "sheets", "scopes": preset},
+    ).json()
+    params = parse_qs(urlparse(start["authorize_url"]).query)
+    assert params["scope"] == ["https://www.googleapis.com/auth/spreadsheets"]

@@ -63,6 +63,7 @@ CONNECTOR_CATALOG: list[dict[str, Any]] = [
         "icon": "💬",
         "color": "#611f69",
         "credential_fields": [{"name": "bot_token", "secret": True}],
+        "oauth_provider": "slack",
         "actions": {
             "send_message": {
                 "description": "Post a message to a channel",

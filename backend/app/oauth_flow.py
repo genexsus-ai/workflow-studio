@@ -44,14 +44,27 @@ def _prune_expired() -> None:
 
 
 def get_oauth_app(provider: str) -> dict[str, str] | None:
-    """The deployment's registered OAuth app (client id/secret) or None."""
+    """The deployment's registered OAuth app (client id/secret) or None.
+
+    Stored registrations win; environment variables
+    (GENXAI_OAUTH_<PROVIDER>_CLIENT_ID / _CLIENT_SECRET) are the fallback
+    for containerized deployments.
+    """
     entry = get_credential_store().get(oauth_app_name(provider))
-    if entry is None:
-        return None
-    return {
-        "client_id": str(entry.config.get("client_id", "")),
-        "client_secret": str(entry.config.get("client_secret", "")),
-    }
+    if entry is not None:
+        return {
+            "client_id": str(entry.config.get("client_id", "")),
+            "client_secret": str(entry.config.get("client_secret", "")),
+        }
+
+    import os
+
+    prefix = f"GENXAI_OAUTH_{provider.upper()}"
+    client_id = os.environ.get(f"{prefix}_CLIENT_ID")
+    client_secret = os.environ.get(f"{prefix}_CLIENT_SECRET")
+    if client_id and client_secret:
+        return {"client_id": client_id, "client_secret": client_secret}
+    return None
 
 
 def save_oauth_app(provider: str, client_id: str, client_secret: str) -> None:

@@ -237,11 +237,11 @@ export const saveOAuthApp = (provider: string, clientId: string, clientSecret: s
     body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
   })
 
-export const startOAuth = (provider: string, credentialName: string) =>
+export const startOAuth = (provider: string, credentialName: string, scopes?: string[]) =>
   fetch(`${API}/oauth/${provider}/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ credential_name: credentialName }),
+    body: JSON.stringify({ credential_name: credentialName, scopes: scopes ?? null }),
   }).then((r) => json<{ authorize_url: string }>(r))
 
 export const createCredential = (name: string, connectorType: string, config: Record<string, string>) =>
