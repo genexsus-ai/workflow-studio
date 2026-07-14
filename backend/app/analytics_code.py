@@ -15,12 +15,12 @@ from __future__ import annotations
 import json
 import logging
 import re
-import sqlite3
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 from app.config import get_settings
+from app.studio_db import studio_connect
 from app.data_catalog import get_adapter, profile_source, resolve_source
 
 logger = logging.getLogger(__name__)
@@ -253,7 +253,7 @@ class ReportStore:
     def __init__(self) -> None:
         self.db_path = get_settings().data_dir / "datasets.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS analytics_reports (
@@ -274,7 +274,7 @@ class ReportStore:
             query += " WHERE source_id = ?"
             params = (source_id,)
         query += " ORDER BY created_at DESC"
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             rows = conn.execute(query, params).fetchall()
         summaries = []
         for row in rows:
@@ -291,7 +291,7 @@ class ReportStore:
         return summaries
 
     def get(self, report_id: str) -> dict[str, Any] | None:
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             row = conn.execute(
                 "SELECT payload FROM analytics_reports WHERE id = ?",
                 (report_id,),
@@ -299,7 +299,7 @@ class ReportStore:
         return json.loads(row[0]) if row else None
 
     def save(self, report: dict[str, Any]) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             conn.execute(
                 "INSERT INTO analytics_reports (id, source_id, payload, created_at) "
                 "VALUES (?, ?, ?, ?)",
@@ -312,7 +312,7 @@ class ReportStore:
             )
 
     def delete(self, report_id: str) -> bool:
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             cursor = conn.execute(
                 "DELETE FROM analytics_reports WHERE id = ?", (report_id,)
             )

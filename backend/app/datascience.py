@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import json
 import logging
-import sqlite3
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 from app.config import get_settings
+from app.studio_db import studio_connect
 from app.data_catalog import (
     FederatedAdapter,
     get_adapter,
@@ -45,7 +45,7 @@ class AnalysisStore:
     def __init__(self) -> None:
         self.db_path = get_settings().data_dir / "datasets.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS analyses (
@@ -60,7 +60,7 @@ class AnalysisStore:
             )
 
     def list(self) -> list[dict[str, Any]]:
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             cursor = conn.execute(
                 "SELECT id, name, sources, cells, created_at, updated_at "
                 "FROM analyses ORDER BY updated_at DESC"
@@ -81,7 +81,7 @@ class AnalysisStore:
             return summaries
 
     def get(self, analysis_id: str) -> dict[str, Any] | None:
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             row = conn.execute(
                 "SELECT id, name, sources, cells, created_at, updated_at "
                 "FROM analyses WHERE id = ?",
@@ -107,7 +107,7 @@ class AnalysisStore:
             "created_at": _now(),
             "updated_at": _now(),
         }
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             conn.execute(
                 "INSERT INTO analyses (id, name, sources, cells, created_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
@@ -124,7 +124,7 @@ class AnalysisStore:
 
     def save(self, analysis: dict[str, Any]) -> None:
         analysis["updated_at"] = _now()
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             conn.execute(
                 "UPDATE analyses SET name = ?, sources = ?, cells = ?, updated_at = ? "
                 "WHERE id = ?",
@@ -138,7 +138,7 @@ class AnalysisStore:
             )
 
     def delete(self, analysis_id: str) -> bool:
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             cursor = conn.execute(
                 "DELETE FROM analyses WHERE id = ?", (analysis_id,)
             )

@@ -16,12 +16,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import sqlite3
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 from app.config import get_settings
+from app.studio_db import studio_connect, try_execute
 from app.data_catalog import (
     FederatedAdapter,
     get_adapter,
@@ -58,7 +58,7 @@ class ExperimentStore:
     def __init__(self) -> None:
         self.db_path = get_settings().data_dir / "datasets.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS experiments (
@@ -75,15 +75,14 @@ class ExperimentStore:
                 )
                 """
             )
-            try:
-                conn.execute(
-                    "ALTER TABLE experiments ADD COLUMN human_gates INTEGER NOT NULL DEFAULT 0"
-                )
-            except sqlite3.OperationalError:
-                pass  # column already exists
+            # no-op when the column already exists
+            try_execute(
+                conn,
+                "ALTER TABLE experiments ADD COLUMN human_gates INTEGER NOT NULL DEFAULT 0",
+            )
 
     def list(self) -> list[dict[str, Any]]:
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             rows = conn.execute(
                 "SELECT id, objective, source_id, target, status, error, stages, "
                 "human_gates, created_at, updated_at FROM experiments "
@@ -110,7 +109,7 @@ class ExperimentStore:
         return summaries
 
     def get(self, experiment_id: str) -> dict[str, Any] | None:
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             row = conn.execute(
                 "SELECT id, objective, source_id, target, status, error, stages, "
                 "human_gates, created_at, updated_at FROM experiments WHERE id = ?",
@@ -153,7 +152,7 @@ class ExperimentStore:
             "created_at": _now(),
             "updated_at": _now(),
         }
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             conn.execute(
                 "INSERT INTO experiments (id, objective, source_id, target, status, "
                 "error, stages, human_gates, created_at, updated_at) "
@@ -175,7 +174,7 @@ class ExperimentStore:
 
     def save(self, experiment: dict[str, Any]) -> None:
         experiment["updated_at"] = _now()
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             conn.execute(
                 "UPDATE experiments SET status = ?, error = ?, stages = ?, "
                 "updated_at = ? WHERE id = ?",
@@ -189,7 +188,7 @@ class ExperimentStore:
             )
 
     def delete(self, experiment_id: str) -> bool:
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             cursor = conn.execute(
                 "DELETE FROM experiments WHERE id = ?", (experiment_id,)
             )

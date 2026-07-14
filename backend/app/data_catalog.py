@@ -13,12 +13,12 @@ from __future__ import annotations
 import json
 import logging
 import re
-import sqlite3
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 from app.config import get_settings
+from app.studio_db import studio_connect
 from app.credentials import get_credential_store
 from genxai.core.datasets import ALLOWED_METRICS, aggregate_rows, get_dataset_store
 from genxai.core.files import get_file_store
@@ -53,7 +53,7 @@ class SourceRegistry:
     def __init__(self) -> None:
         self.db_path = get_settings().data_dir / "datasets.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS sources (
@@ -67,7 +67,7 @@ class SourceRegistry:
             )
 
     def list(self) -> list[dict[str, Any]]:
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             cursor = conn.execute(
                 "SELECT id, name, kind, config, created_at FROM sources "
                 "ORDER BY created_at DESC"
@@ -84,7 +84,7 @@ class SourceRegistry:
             ]
 
     def get(self, source_id: str) -> dict[str, Any] | None:
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             row = conn.execute(
                 "SELECT id, name, kind, config, created_at FROM sources WHERE id = ?",
                 (source_id,),
@@ -107,7 +107,7 @@ class SourceRegistry:
             "config": config,
             "created_at": datetime.now(UTC).isoformat(),
         }
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             conn.execute(
                 "INSERT INTO sources (id, name, kind, config, created_at) "
                 "VALUES (?, ?, ?, ?, ?)",
@@ -122,7 +122,7 @@ class SourceRegistry:
         return source
 
     def delete(self, source_id: str) -> bool:
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             cursor = conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
         return cursor.rowcount > 0
 

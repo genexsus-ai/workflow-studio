@@ -1,8 +1,10 @@
 """One-time migration: import file-based Studio data into the SQL database.
 
 Copies workflows (data/workflows/*.json), their version snapshots
-(data/versions/<id>/*.json), and run records (data/runs/execution_*.json)
-into the database named by DATABASE_URL. Existing rows are left untouched,
+(data/versions/<id>/*.json), run records (data/runs/execution_*.json), and
+the SQLite database (data/datasets.db: datasets/rows plus the sources,
+analyses, analytics_reports, models and experiments tables) into the
+database named by DATABASE_URL. Existing rows are left untouched,
 so the script is safe to re-run. The source files are not modified.
 
 Usage (from the backend root, with PERSISTENCE_BACKEND=postgres in .env):
@@ -115,6 +117,90 @@ def main() -> None:
             migrated += 1
     exec_store.close()
     print(f"runs:      {migrated} migrated, {skipped} already present")
+
+    migrate_sqlite(engine, data_dir)
+
+
+def migrate_sqlite(engine: sa.Engine, data_dir: Path) -> None:
+    """Import data/datasets.db (datasets + the studio's app tables)."""
+    import sqlite3
+
+    sqlite_path = data_dir / "datasets.db"
+    if not sqlite_path.exists():
+        print("datasets.db: not present, nothing to migrate")
+        return
+
+    from app.dataset_store import StudioDatasetStore, datasets_table, rows_table
+
+    StudioDatasetStore(engine)  # ensures ws_datasets / ws_dataset_rows exist
+    src = sqlite3.connect(sqlite_path)
+
+    migrated = skipped = 0
+    with engine.begin() as conn:
+        for name, created_at in src.execute(
+            "SELECT name, created_at FROM datasets"
+        ).fetchall():
+            exists = conn.execute(
+                sa.select(datasets_table.c.name).where(datasets_table.c.name == name)
+            ).first()
+            has_rows = conn.execute(
+                sa.select(rows_table.c.id)
+                .where(rows_table.c.dataset == name)
+                .limit(1)
+            ).first()
+            if exists and has_rows:
+                skipped += 1
+                continue
+            if not exists:
+                conn.execute(
+                    datasets_table.insert().values(name=name, created_at=created_at)
+                )
+            if not has_rows:
+                payload = [
+                    {"dataset": name, "created_at": row_created, "data": data}
+                    for row_created, data in src.execute(
+                        "SELECT created_at, data FROM rows WHERE dataset = ? "
+                        "ORDER BY id",
+                        (name,),
+                    ).fetchall()
+                ]
+                if payload:
+                    conn.execute(rows_table.insert(), payload)
+            migrated += 1
+    print(f"datasets:  {migrated} migrated, {skipped} already present")
+
+    # The app-table store classes create their tables on first use.
+    from app.analytics_code import get_report_store
+    from app.data_catalog import get_source_registry
+    from app.datascience import get_analysis_store
+    from app.experiments import get_experiment_store
+    from app.ml import get_model_registry
+
+    get_source_registry(), get_report_store(), get_analysis_store()
+    get_experiment_store(), get_model_registry()
+
+    for table in ("sources", "analyses", "analytics_reports", "models", "experiments"):
+        present = src.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+            (table,),
+        ).fetchone()
+        if not present:
+            print(f"{table}: not in datasets.db, skipped")
+            continue
+        columns = [row[1] for row in src.execute(f"PRAGMA table_info({table})")]
+        rows = src.execute(f"SELECT {', '.join(columns)} FROM {table}").fetchall()
+        placeholders = ", ".join(["%s"] * len(columns))
+        migrated = 0
+        with engine.begin() as conn:
+            for row in rows:
+                result = conn.exec_driver_sql(
+                    f"INSERT INTO {table} ({', '.join(columns)}) "
+                    f"VALUES ({placeholders}) ON CONFLICT DO NOTHING",
+                    tuple(row),
+                )
+                migrated += result.rowcount
+        print(f"{table}: {migrated} migrated, {len(rows) - migrated} already present")
+    src.close()
 
 
 if __name__ == "__main__":

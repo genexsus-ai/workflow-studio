@@ -56,7 +56,14 @@ def create_app() -> FastAPI:
     from genxai.core.files import configure_file_store
 
     configure_file_store(settings.data_dir / "files")
-    configure_dataset_store(settings.data_dir / "datasets.db")
+    from app.studio_db import get_studio_engine, use_postgres
+
+    if use_postgres():
+        from app.dataset_store import install_studio_dataset_store
+
+        install_studio_dataset_store(get_studio_engine())
+    else:
+        configure_dataset_store(settings.data_dir / "datasets.db")
     register_studio_tools()
     seed_examples(settings.data_dir)
 

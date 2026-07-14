@@ -11,12 +11,12 @@ from __future__ import annotations
 import io
 import json
 import logging
-import sqlite3
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 from app.config import get_settings
+from app.studio_db import studio_connect, try_execute
 from app.data_catalog import get_adapter, resolve_source
 from genxai.core.files import get_file_store
 
@@ -38,7 +38,7 @@ class ModelRegistry:
     def __init__(self) -> None:
         self.db_path = get_settings().data_dir / "datasets.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS models (
@@ -54,15 +54,15 @@ class ModelRegistry:
                 )
                 """
             )
-            try:  # migration: diagnostic figures (ROC / predicted-vs-actual)
-                conn.execute(
-                    "ALTER TABLE models ADD COLUMN figures TEXT NOT NULL DEFAULT '[]'"
-                )
-            except sqlite3.OperationalError:
-                pass  # column already exists
+            # migration: diagnostic figures (ROC / predicted-vs-actual);
+            # no-op when the column already exists
+            try_execute(
+                conn,
+                "ALTER TABLE models ADD COLUMN figures TEXT NOT NULL DEFAULT '[]'",
+            )
 
     def list(self) -> list[dict[str, Any]]:
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             cursor = conn.execute(
                 "SELECT id, name, model_type, source_id, target, features, "
                 "metrics, file_id, created_at, figures FROM models "
@@ -71,7 +71,7 @@ class ModelRegistry:
             return [self._row_to_dict(row) for row in cursor.fetchall()]
 
     def get(self, identifier: str) -> dict[str, Any] | None:
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             row = conn.execute(
                 "SELECT id, name, model_type, source_id, target, features, "
                 "metrics, file_id, created_at, figures FROM models "
@@ -81,7 +81,7 @@ class ModelRegistry:
         return self._row_to_dict(row) if row else None
 
     def save(self, model: dict[str, Any]) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             conn.execute(
                 "INSERT INTO models (id, name, model_type, source_id, target, "
                 "features, metrics, file_id, created_at, figures) "
@@ -101,7 +101,7 @@ class ModelRegistry:
             )
 
     def delete(self, model_id: str) -> bool:
-        with sqlite3.connect(self.db_path) as conn:
+        with studio_connect(self.db_path) as conn:
             cursor = conn.execute("DELETE FROM models WHERE id = ?", (model_id,))
         return cursor.rowcount > 0
 
