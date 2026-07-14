@@ -288,6 +288,11 @@ def test_full_pipeline_with_model_and_report(client, monkeypatch):
     assert report["report"].startswith("#")
     assert calls["report"] == 1
 
+    # ...plus the deterministic performance section with the full metric set
+    assert "## Final model performance" in report["report"]
+    for label in ("R²", "MAE", "MSE", "RMSE", "Cross-validation"):
+        assert label in report["report"], f"missing {label}"
+
 
 def test_candidate_comparison_prefers_simpler_model(client, monkeypatch):
     from genxai.core.datasets import get_dataset_store

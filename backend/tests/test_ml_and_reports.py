@@ -36,7 +36,12 @@ def test_train_linear_regression_and_predict_to_dataset(client):
     assert trained.status_code == 201, trained.text
     model = trained.json()
     assert model["features"] == ["x", "noise"]
-    assert model["metrics"]["r2"] > 0.99  # y = 2x + 1 is perfectly linear
+    metrics = model["metrics"]
+    assert metrics["r2"] > 0.99  # y = 2x + 1 is perfectly linear
+    # Full regression metric set on the holdout
+    for key in ("mae", "mse", "rmse"):
+        assert key in metrics and metrics[key] >= 0
+    assert abs(metrics["rmse"] ** 2 - metrics["mse"]) < 0.01
 
     listing = client.get("/api/v1/datascience/models").json()
     assert listing[0]["name"] == "line-fit"
@@ -68,7 +73,12 @@ def test_train_classifier(client):
             "model_type": "random_forest_classification",
         },
     ).json()
-    assert trained["metrics"]["accuracy"] >= 0.9
+    metrics = trained["metrics"]
+    assert metrics["accuracy"] >= 0.9
+    # Full classification metric set on the holdout
+    for key in ("precision_weighted", "recall_weighted", "f1_weighted", "roc_auc"):
+        assert key in metrics, f"missing {key}: {metrics}"
+        assert 0 <= metrics[key] <= 1
 
 
 def test_train_validation(client):

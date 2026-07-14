@@ -224,27 +224,69 @@ def train_model(
     estimator.fit(X_train, y_train)
 
     if is_regression:
-        from sklearn.metrics import mean_squared_error, r2_score
+        from sklearn.metrics import (
+            mean_absolute_error,
+            mean_squared_error,
+            r2_score,
+        )
 
         predictions = estimator.predict(X_test)
+        mse = float(mean_squared_error(y_test, predictions))
         metrics = {
             "r2": round(float(r2_score(y_test, predictions)), 4),
-            "rmse": round(float(mean_squared_error(y_test, predictions) ** 0.5), 4),
+            "mae": round(float(mean_absolute_error(y_test, predictions)), 4),
+            "mse": round(mse, 4),
+            "rmse": round(mse**0.5, 4),
             "train_rows": len(X_train),
             "test_rows": len(X_test),
         }
     else:
-        from sklearn.metrics import accuracy_score, f1_score
+        from sklearn.metrics import (
+            accuracy_score,
+            f1_score,
+            precision_score,
+            recall_score,
+            roc_auc_score,
+        )
 
         predictions = estimator.predict(X_test)
         metrics = {
             "accuracy": round(float(accuracy_score(y_test, predictions)), 4),
+            "precision_weighted": round(
+                float(precision_score(
+                    y_test, predictions, average="weighted", zero_division=0
+                )), 4
+            ),
+            "recall_weighted": round(
+                float(recall_score(
+                    y_test, predictions, average="weighted", zero_division=0
+                )), 4
+            ),
             "f1_weighted": round(
                 float(f1_score(y_test, predictions, average="weighted")), 4
             ),
             "train_rows": len(X_train),
             "test_rows": len(X_test),
         }
+        # ROC AUC needs class probabilities and >1 class in the holdout;
+        # omit rather than fail when either is missing.
+        try:
+            proba = estimator.predict_proba(X_test)
+            classes = list(estimator.classes_)
+            if len(classes) == 2:
+                positive = classes[1]
+                auc = roc_auc_score(
+                    [1 if value == positive else 0 for value in y_test],
+                    proba[:, 1],
+                )
+            else:
+                auc = roc_auc_score(
+                    y_test, proba, multi_class="ovr", average="weighted",
+                    labels=classes,
+                )
+            metrics["roc_auc"] = round(float(auc), 4)
+        except Exception:
+            pass
 
     buffer = io.BytesIO()
     joblib.dump({"estimator": estimator, "features": feature_names}, buffer)

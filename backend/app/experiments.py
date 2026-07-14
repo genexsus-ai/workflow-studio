@@ -556,6 +556,69 @@ def _stage(experiment: dict[str, Any], name: str) -> dict[str, Any]:
     return next(s for s in experiment["stages"] if s["name"] == name)
 
 
+# Display names for the deterministic performance section of the report.
+_METRIC_LABELS = {
+    "r2": "R²",
+    "mae": "MAE",
+    "mse": "MSE",
+    "rmse": "RMSE",
+    "accuracy": "Accuracy",
+    "precision_weighted": "Precision (weighted)",
+    "recall_weighted": "Recall (weighted)",
+    "f1_weighted": "F1 (weighted)",
+    "roc_auc": "ROC AUC",
+}
+
+
+def _performance_section(model_result: dict[str, Any]) -> str:
+    """Markdown 'Final model performance' block appended to every report.
+
+    Deterministic — the numbers come from the holdout/CV computations, not
+    the narrator agent, so they are always present and always correct.
+    """
+    if not model_result or model_result.get("skipped"):
+        return ""
+    metrics = model_result.get("holdout") or model_result.get("metrics")
+    if not isinstance(metrics, dict) or not metrics:
+        return ""
+
+    lines = ["## Final model performance", ""]
+    model_type = model_result.get("model_type")
+    rows_note = ""
+    if "test_rows" in metrics:
+        rows_note = (
+            f" — 80/20 holdout ({metrics.get('train_rows')} train / "
+            f"{metrics['test_rows']} test rows)"
+        )
+    if model_type:
+        lines.append(f"Model: **{model_type}**{rows_note}")
+        lines.append("")
+    lines.append("| Metric | Value |")
+    lines.append("| --- | --- |")
+    for key, value in metrics.items():
+        if key in ("train_rows", "test_rows"):
+            continue
+        lines.append(f"| {_METRIC_LABELS.get(key, key)} | {value} |")
+
+    cv = model_result.get("cv")
+    if isinstance(cv, dict) and "mean" in cv:
+        lines.append("")
+        lines.append(
+            f"Cross-validation ({cv.get('folds')}-fold {cv.get('metric')}): "
+            f"{cv['mean']} ± {cv['std']}"
+            + (" · ⚠ possible overfit" if cv.get("overfit_warning") else "")
+        )
+    candidates = model_result.get("candidates")
+    if isinstance(candidates, list) and len(candidates) > 1:
+        ranked = ", ".join(
+            f"{entry['model_type']}={entry['cv_mean']}"
+            + (" ✓" if entry.get("chosen") else "")
+            for entry in candidates
+        )
+        lines.append(f"Candidates compared: {ranked}")
+    return "\n".join(lines)
+
+
 def _sources_context(source_id: str) -> str:
     source = resolve_source(source_id)
     if source is None:
@@ -1103,6 +1166,11 @@ async def run_experiment(experiment_id: str) -> None:
             "figures": len((_stage(experiment, "viz")["artifact"] or {}).get("figures", [])),
         }
         report = await narrate_report(summary)
+        performance = _performance_section(model_result)
+        if performance:
+            report["report"] = (
+                str(report.get("report") or "").rstrip() + "\n\n" + performance
+            )
         stage["artifact"] = report
         stage["status"] = "ok"
         experiment["status"] = "ok"
