@@ -536,20 +536,11 @@ async def _analyze_rows(
     model_override: str | None,
     profile: dict | None = None,
 ) -> dict:
-    """LLM analysis of a rows sample: patterns, anomalies, suggestions."""
-    from app.generation import DEFAULT_GENERATION_MODEL, _resolve_model_and_key
-    from genxai.llm.factory import LLMProviderFactory
+    """Agent analysis of a rows sample: patterns, anomalies, suggestions."""
+    from app.analyst import run_analyst
 
     if sample["total"] == 0 or not sample["rows"]:
         raise HTTPException(status_code=404, detail="Source is empty or missing")
-
-    model, api_key = _resolve_model_and_key(model_override or DEFAULT_GENERATION_MODEL)
-    if api_key is None:
-        raise HTTPException(
-            status_code=409,
-            detail="No LLM API key configured — set OPENAI_API_KEY or "
-            "ANTHROPIC_API_KEY in the backend .env",
-        )
 
     columns = sorted(
         {key for row in sample["rows"] for key in row if not key.startswith("_")}
@@ -572,16 +563,16 @@ async def _analyze_rows(
         "Answer with 3-6 concise bullet points grounded ONLY in this data. "
         "Note explicitly that this is a sample if that limits any conclusion."
     )
-    provider = LLMProviderFactory.create_provider(model=model, api_key=api_key)
-    response = await provider.generate(
-        prompt, system_prompt="You are a careful data analyst."
-    )
+    try:
+        analysis = await run_analyst(prompt, model=model_override)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {
         "dataset": name,
-        "model": model,
+        "model": analysis["model"],
         "sampled_rows": len(sample["rows"]),
         "total_rows": sample["total"],
-        "insight": response.content,
+        "insight": analysis["output"],
     }
 
 

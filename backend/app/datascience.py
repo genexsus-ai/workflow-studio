@@ -198,16 +198,9 @@ def _prior_cells_context(cells: list[dict[str, Any]], limit: int = 6) -> str:
 async def plan_cell(
     question: str, sources_context: str, prior_context: str, error: str | None = None
 ) -> dict[str, Any]:
-    """One LLM call: question -> {sql, chart}. Isolated so tests can stub it."""
-    from app.generation import DEFAULT_GENERATION_MODEL, _resolve_model_and_key
-    from genxai.llm.factory import LLMProviderFactory
+    """One analyst-agent call: question -> {sql, chart}. Stubbed in tests."""
+    from app.analyst import run_analyst
     from genxai.utils.structured import parse_json_loosely
-
-    model, api_key = _resolve_model_and_key(DEFAULT_GENERATION_MODEL)
-    if api_key is None:
-        raise RuntimeError(
-            "No LLM API key configured — set OPENAI_API_KEY or ANTHROPIC_API_KEY"
-        )
 
     retry_block = (
         f"\nYour previous SQL failed with this error — fix it:\n{error}\n"
@@ -224,26 +217,28 @@ async def plan_cell(
         ' "chart": {"type": "bar"|"line"|"table", "x": "<column>", "y": "<column>"} or null}\n'
         "Prefer small, focused result sets (aggregate; LIMIT 100)."
     )
-    provider = LLMProviderFactory.create_provider(model=model, api_key=api_key)
-    response = await provider.generate(
-        prompt, system_prompt="Return only valid JSON. No prose, no code fences."
+    result = await run_analyst(
+        prompt,
+        role="SQL Planner",
+        goal="Translate analytical questions into correct read-only DuckDB SQL",
+        backstory="Return only valid JSON. No prose, no code fences.",
     )
-    parsed = parse_json_loosely(response.content)
+    parsed = parse_json_loosely(result["output"])
     if not isinstance(parsed, dict) or not parsed.get("sql"):
-        raise ValueError(f"Planner returned no SQL: {response.content[:200]}")
-    return {"sql": str(parsed["sql"]), "chart": parsed.get("chart"), "model": model}
+        raise ValueError(f"Planner returned no SQL: {result['output'][:200]}")
+    return {
+        "sql": str(parsed["sql"]),
+        "chart": parsed.get("chart"),
+        "model": result["model"],
+    }
 
 
 async def narrate_cell(
     question: str, sql: str, columns: list[str], rows: list[dict[str, Any]]
 ) -> str:
-    """Second LLM call: interpret the result. Isolated so tests can stub it."""
-    from app.generation import DEFAULT_GENERATION_MODEL, _resolve_model_and_key
-    from genxai.llm.factory import LLMProviderFactory
+    """Second analyst-agent call: interpret the result. Stubbed in tests."""
+    from app.analyst import run_analyst
 
-    model, api_key = _resolve_model_and_key(DEFAULT_GENERATION_MODEL)
-    if api_key is None:
-        raise RuntimeError("No LLM API key configured")
     prompt = (
         f"Question: {question}\n"
         f"SQL executed:\n{sql}\n"
@@ -252,11 +247,13 @@ async def narrate_cell(
         "In 2-4 sentences: answer the question from this result, note one "
         "caveat if relevant, and suggest one natural follow-up question."
     )
-    provider = LLMProviderFactory.create_provider(model=model, api_key=api_key)
-    response = await provider.generate(
-        prompt, system_prompt="You are a careful data analyst. Be concrete and brief."
+    result = await run_analyst(
+        prompt,
+        role="Insight Narrator",
+        goal="Explain query results concretely and briefly",
+        backstory="You are a careful data analyst. Be concrete and brief.",
     )
-    return response.content.strip()
+    return result["output"].strip()
 
 
 def _execute_sql(sql: str, sources: dict[str, str]) -> tuple[list[str], list[dict[str, Any]], int]:
