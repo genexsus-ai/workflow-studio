@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   addAnalysisCell,
   apiBase,
+  getSourceRows,
+  getSourceSchema,
   addManualCell,
   createAnalysis,
   createExperiment,
@@ -353,6 +355,13 @@ function ExperimentDetail({
       </div>
       {experiment.error && <p className="error-text">{experiment.error}</p>}
 
+      <details className="insights-card">
+        <summary className="profile-summary">
+          Source preview <code>{experiment.source_id}</code>
+        </summary>
+        <SourcePreview sourceId={experiment.source_id} />
+      </details>
+
       {experiment.status === 'waiting' && (
         <GateBanner experiment={experiment} onDecided={load} />
       )}
@@ -666,6 +675,78 @@ function StageCard({ stage }: { stage: ExperimentStage }) {
   )
 }
 
+function SourcePreview({ sourceId }: { sourceId: string }) {
+  const [rows, setRows] = useState<Record<string, unknown>[] | null>(null)
+  const [total, setTotal] = useState(0)
+  const [schema, setSchema] = useState<{ name: string; type: string }[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([getSourceRows(sourceId, 8, 0), getSourceSchema(sourceId)])
+      .then(([page, columns]) => {
+        if (cancelled) return
+        setRows(page.rows)
+        setTotal(page.total)
+        setSchema(columns)
+        setError(null)
+      })
+      .catch((err) => !cancelled && setError((err as Error).message))
+    return () => {
+      cancelled = true
+    }
+  }, [sourceId])
+
+  if (error) return <p className="error-text">{error}</p>
+  if (!rows) return <p className="config-subtitle">Loading preview…</p>
+  if (rows.length === 0) return <p className="config-subtitle">Source is empty.</p>
+
+  const columns =
+    schema.length > 0
+      ? schema.map((c) => c.name).slice(0, 8)
+      : Object.keys(rows[0]).filter((k) => !k.startsWith('_')).slice(0, 8)
+  const typeOf = (name: string) => schema.find((c) => c.name === name)?.type
+
+  return (
+    <div className="source-preview">
+      <div className="dataset-table-wrap">
+        <table className="insights-table">
+          <thead>
+            <tr>
+              {columns.map((column) => (
+                <th key={column} title={typeOf(column)}>
+                  {column}
+                  {typeOf(column) ? (
+                    <span className="preview-type"> {typeOf(column)}</span>
+                  ) : null}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={index}>
+                {columns.map((column) => (
+                  <td key={column} className="truncate">
+                    {row[column] == null
+                      ? '—'
+                      : typeof row[column] === 'object'
+                        ? JSON.stringify(row[column])
+                        : String(row[column])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="config-subtitle">
+        Showing {rows.length} of {total} rows · full explorer in the Analytics app
+      </p>
+    </div>
+  )
+}
+
 function ModelsPanel() {
   const [models, setModels] = useState<ModelInfo[]>([])
   const [sources, setSources] = useState<SourceSummary[]>([])
@@ -798,6 +879,7 @@ function AnalysisDetail({
   const [slackCredential, setSlackCredential] = useState('')
   const [slackChannel, setSlackChannel] = useState('')
   const [scheduled, setScheduled] = useState<string | null>(null)
+  const [previewSource, setPreviewSource] = useState<string | null>(null)
 
   const load = useCallback(() => {
     getAnalysis(analysisId).then(setAnalysis).catch(() => setAnalysis(null))
@@ -961,9 +1043,19 @@ function AnalysisDetail({
         <div className="source-chips">
           {Object.entries(analysis.sources).map(([alias, sourceId]) => {
             const source = sources.find((s) => s.id === sourceId)
+            const active = previewSource === sourceId
             return (
-              <span key={alias} className="source-chip" title={sourceId}>
-                <code>{alias}</code> {source ? `· ${source.name}` : ''}
+              <span
+                key={alias}
+                className={`source-chip${active ? ' source-chip-active' : ''}`}
+                title={`${sourceId} — click to preview`}
+              >
+                <button
+                  className="source-chip-name"
+                  onClick={() => setPreviewSource(active ? null : sourceId)}
+                >
+                  <code>{alias}</code> {source ? `· ${source.name}` : ''} 👁
+                </button>
                 <button onClick={() => void unbindAlias(alias)}>✕</button>
               </span>
             )
@@ -990,6 +1082,7 @@ function AnalysisDetail({
             Bind at least one source — the agent queries them as SQL tables by alias.
           </p>
         )}
+        {previewSource && <SourcePreview key={previewSource} sourceId={previewSource} />}
       </section>
 
       {analysis.cells.map((cell) => (

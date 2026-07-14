@@ -2293,3 +2293,27 @@ button.danger {
   border-color: #f59e0b;
   background: #fffbeb;
 }
+
+.source-preview {
+  margin-top: 10px;
+}
+
+.preview-type {
+  font-weight: 400;
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.source-chip-name {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: inherit;
+  color: inherit;
+  padding: 0;
+}
+
+.source-chip-active {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
