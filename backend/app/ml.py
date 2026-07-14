@@ -471,3 +471,37 @@ def cross_validate_spec(
         "overfit_warning": gap > 0.15,
         "features": feature_names,
     }
+
+
+def rank_feature_importance(
+    source_id: str,
+    target: str,
+    model_type: str,
+    features: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Rank features by random-forest importance (the selection workhorse).
+
+    A forest is used for ranking regardless of the final model family —
+    it captures non-linear signal and is the standard cheap importance
+    estimator. Returns [{feature, importance}] sorted descending.
+    """
+    from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+
+    if model_type not in MODEL_TYPES:
+        raise ValueError(f"model_type must be one of {sorted(MODEL_TYPES)}")
+    feature_names, X, y, _ = _load_frame(source_id, target, features)
+    if model_type in _REGRESSORS:
+        y = [float(v) for v in y]
+        forest = RandomForestRegressor(n_estimators=100, random_state=42)
+    else:
+        forest = RandomForestClassifier(n_estimators=100, random_state=42)
+    forest.fit(X, y)
+    ranked = sorted(
+        (
+            {"feature": name, "importance": round(float(importance), 4)}
+            for name, importance in zip(feature_names, forest.feature_importances_)
+        ),
+        key=lambda entry: entry["importance"],
+        reverse=True,
+    )
+    return ranked

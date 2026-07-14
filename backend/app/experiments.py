@@ -609,11 +609,41 @@ async def _run_model_stage(
 
     model_type = str(proposal.get("model_type") or "")
     features = proposal.get("features") or None
-    cv = ml.cross_validate_spec(
+
+    # Feature selection: rank by forest importance, propose a pruned set,
+    # cross-validate BOTH sets, and keep the winner (ties favor fewer).
+    importances = ml.rank_feature_importance(
         features_source, target, model_type, features
     )
+    feature_selection: dict[str, Any] | None = None
+    chosen_features = [entry["feature"] for entry in importances]
+    cv = ml.cross_validate_spec(features_source, target, model_type, chosen_features)
+    if len(importances) > 2:
+        floor = 0.5 / len(importances)  # half of a uniform share
+        pruned = [e["feature"] for e in importances if e["importance"] >= floor]
+        if len(pruned) >= 2 and len(pruned) < len(importances):
+            cv_pruned = ml.cross_validate_spec(
+                features_source, target, model_type, pruned
+            )
+            keep_pruned = cv_pruned["mean"] >= cv["mean"] - cv["std"]
+            feature_selection = {
+                "importances": importances,
+                "dropped": [f for f in chosen_features if f not in pruned],
+                "cv_all_features": {"mean": cv["mean"], "std": cv["std"]},
+                "cv_selected": {"mean": cv_pruned["mean"], "std": cv_pruned["std"]},
+                "kept_selected_set": keep_pruned,
+            }
+            if keep_pruned:
+                chosen_features = pruned
+                cv = cv_pruned
+    if feature_selection is None:
+        feature_selection = {"importances": importances, "dropped": [],
+                             "kept_selected_set": False}
+
     model_name = f"exp_{experiment['id'][:8]}_model"
-    trained = ml.train_model(model_name, features_source, target, model_type, features)
+    trained = ml.train_model(
+        model_name, features_source, target, model_type, chosen_features
+    )
     predictions = ml.predict_with_model(
         trained["id"], features_source, dataset=f"exp_{experiment['id'][:8]}_predictions"
     )
@@ -622,6 +652,8 @@ async def _run_model_stage(
         "rationale": proposal.get("rationale"),
         "model_type": model_type,
         "model_name": model_name,
+        "feature_selection": feature_selection,
+        "features_used": chosen_features,
         "cross_validation": cv,
         "holdout_metrics": trained["metrics"],
         "predictions_dataset": predictions["dataset"],
@@ -629,6 +661,7 @@ async def _run_model_stage(
     return {
         "approach": "spec",
         "model_type": model_type,
+        "features_used": chosen_features,
         "cv": cv,
         "holdout": trained["metrics"],
     }

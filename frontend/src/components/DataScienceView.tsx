@@ -580,6 +580,26 @@ function StageCard({ stage }: { stage: ExperimentStage }) {
               <strong>{String(artifact.model_type ?? artifact.approach ?? '')}</strong>
               {artifact.rationale ? ` — ${String(artifact.rationale)}` : ''}
             </p>
+            {Boolean(artifact.feature_selection) && (
+              <p className="config-subtitle">
+                Features:{' '}
+                {((artifact.feature_selection as Record<string, unknown>)
+                  .importances as { feature: string; importance: number }[])
+                  ?.map((e) => `${e.feature} (${e.importance})`)
+                  .join(', ')}
+                {(((artifact.feature_selection as Record<string, unknown>)
+                  .dropped as string[]) ?? []).length > 0 && (
+                  <>
+                    {' '}· dropped:{' '}
+                    <strong>
+                      {((artifact.feature_selection as Record<string, unknown>)
+                        .dropped as string[]).join(', ')}
+                    </strong>{' '}
+                    (validated by CV)
+                  </>
+                )}
+              </p>
+            )}
             {Boolean(artifact.cross_validation) && (
               <p className="config-subtitle">
                 CV ({String((artifact.cross_validation as Record<string, unknown>).folds)}-fold{' '}

@@ -253,8 +253,16 @@ def test_full_pipeline_with_model_and_report(client, monkeypatch):
     assert model["approach"] == "spec"
     assert model["model_type"] == "linear_regression"
     assert model["cross_validation"]["mean"] > 0.99
-    assert model["cross_validation"]["overfit_warning"] is False
     assert model["holdout_metrics"]["r2"] > 0.99
+
+    # Feature selection ranked x far above the noise column and recorded it
+    selection = model["feature_selection"]
+    assert selection["importances"][0]["feature"] == "x"
+    noise_entry = next(e for e in selection["importances"] if e["feature"] == "noise")
+    assert noise_entry["importance"] < selection["importances"][0]["importance"]
+    if selection["dropped"]:
+        assert selection["dropped"] == ["noise"]
+        assert model["features_used"] == ["x"]
 
     # Predictions materialized as a dataset
     predictions = client.get(

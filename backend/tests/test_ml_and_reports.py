@@ -193,3 +193,25 @@ def test_schedule_report_generates_workflow(client):
     ]
     notify = workflow2["nodes"][2]
     assert notify["config"]["params"]["text"] == "{{ report.data.report }}"
+
+
+def test_rank_feature_importance_finds_junk(client):
+    import random
+
+    from genxai.core.datasets import get_dataset_store
+
+    rng = random.Random(42)
+    rows = []
+    for _ in range(200):
+        a = rng.uniform(0, 10)
+        b = rng.uniform(0, 10)
+        junk = rng.uniform(0, 10)  # truly independent of the target
+        rows.append({"a": a, "b": b, "junk": junk, "y": 2 * a + 3 * b})
+    get_dataset_store().append("ranked", rows)
+
+    from app.ml import rank_feature_importance
+
+    ranked = rank_feature_importance("dataset:ranked", "y", "linear_regression")
+    assert [e["feature"] for e in ranked][:2] == ["b", "a"]  # 3x beats 2x
+    assert ranked[-1]["feature"] == "junk"
+    assert ranked[-1]["importance"] < 0.05
