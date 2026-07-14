@@ -20,6 +20,8 @@ import {
   rerunAllCells,
   rerunAnalysisCell,
   rerunExperiment,
+  resumeExperiment,
+  compareExperiments,
   scheduleReport,
   trainModel,
   updateAnalysis,
@@ -152,6 +154,7 @@ function ExperimentsView({ onSwitchMode }: { onSwitchMode: () => void }) {
   const [objective, setObjective] = useState('')
   const [source, setSource] = useState('')
   const [target, setTarget] = useState('')
+  const [humanGates, setHumanGates] = useState(false)
   const [sources, setSources] = useState<SourceSummary[]>([])
   const [error, setError] = useState<string | null>(null)
 
@@ -174,7 +177,12 @@ function ExperimentsView({ onSwitchMode }: { onSwitchMode: () => void }) {
   const create = async () => {
     setError(null)
     try {
-      const experiment = await createExperiment(objective.trim(), source, target.trim() || undefined)
+      const experiment = await createExperiment(
+        objective.trim(),
+        source,
+        target.trim() || undefined,
+        humanGates,
+      )
       setCreating(false)
       setObjective('')
       setTarget('')
@@ -226,6 +234,14 @@ function ExperimentsView({ onSwitchMode }: { onSwitchMode: () => void }) {
               placeholder="Target column (optional)"
               onChange={(e) => setTarget(e.target.value)}
             />
+            <label className="field field-checkbox">
+              <input
+                type="checkbox"
+                checked={humanGates}
+                onChange={(e) => setHumanGates(e.target.checked)}
+              />
+              <span>Pause for my approval at key steps</span>
+            </label>
             <div className="credential-form-actions">
               <button
                 className="primary-small"
@@ -307,6 +323,13 @@ function ExperimentDetail({
           {experiment.status}
         </span>
         <span className="credential-row-actions">
+          <a
+            className="export-link"
+            href={`${apiBase}/datascience/experiments/${experimentId}/export`}
+            title="Download as a runnable Python project"
+          >
+            ⬇ Project
+          </a>
           <button
             title="Re-run the crew against current data"
             onClick={async () => {
@@ -330,10 +353,129 @@ function ExperimentDetail({
       </div>
       {experiment.error && <p className="error-text">{experiment.error}</p>}
 
+      {experiment.status === 'waiting' && (
+        <GateBanner experiment={experiment} onDecided={load} />
+      )}
+
       {experiment.stages.map((stage) => (
         <StageCard key={stage.name} stage={stage} />
       ))}
+
+      <CompareSection experimentId={experimentId} />
     </div>
+  )
+}
+
+function GateBanner({
+  experiment,
+  onDecided,
+}: {
+  experiment: Experiment
+  onDecided: () => void
+}) {
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const stage = experiment.stages.find((s) => s.gate && s.gate.approved === undefined)
+  if (!stage?.gate) return null
+
+  const decide = async (approve: boolean) => {
+    setBusy(true)
+    try {
+      await resumeExperiment(experiment.id, approve, note || undefined)
+      onDecided()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="insights-card gate-banner">
+      <h2>⏸ Waiting for you</h2>
+      <p className="cell-narrative">{stage.gate.question}</p>
+      {stage.gate.preview && (
+        <pre className="cell-sql">{JSON.stringify(stage.gate.preview, null, 1)}</pre>
+      )}
+      <div className="insights-filters">
+        <input
+          className="analyze-question"
+          value={note}
+          placeholder="Optional note for the crew"
+          onChange={(e) => setNote(e.target.value)}
+        />
+        <button className="primary-small" disabled={busy} onClick={() => void decide(true)}>
+          ✓ Approve
+        </button>
+        <button className="danger" disabled={busy} onClick={() => void decide(false)}>
+          ✕ Reject
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function CompareSection({ experimentId }: { experimentId: string }) {
+  const [others, setOthers] = useState<ExperimentSummary[]>([])
+  const [comparison, setComparison] = useState<{
+    a: Record<string, unknown>
+    b: Record<string, unknown>
+  } | null>(null)
+
+  useEffect(() => {
+    listExperiments()
+      .then((list) => setOthers(list.filter((e) => e.id !== experimentId)))
+      .catch(() => setOthers([]))
+  }, [experimentId])
+
+  if (others.length === 0) return null
+
+  const FIELDS: [string, string][] = [
+    ['status', 'Status'],
+    ['cleaned_rows', 'Cleaned rows'],
+    ['feature_columns', 'Feature columns'],
+    ['model_type', 'Model'],
+    ['cv_mean', 'CV mean'],
+    ['recommendation', 'Recommendation'],
+  ]
+
+  return (
+    <section className="insights-card">
+      <h2>Compare</h2>
+      <select
+        value=""
+        onChange={(e) => {
+          if (e.target.value) {
+            void compareExperiments(experimentId, e.target.value).then(setComparison)
+          }
+        }}
+      >
+        <option value="">Compare with…</option>
+        {others.map((other) => (
+          <option key={other.id} value={other.id}>
+            {other.objective}
+          </option>
+        ))}
+      </select>
+      {comparison && (
+        <table className="insights-table" style={{ marginTop: 10 }}>
+          <thead>
+            <tr>
+              <th />
+              <th className="truncate">{String(comparison.a.objective)}</th>
+              <th className="truncate">{String(comparison.b.objective)}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {FIELDS.map(([key, label]) => (
+              <tr key={key}>
+                <td>{label}</td>
+                <td>{comparison.a[key] == null ? '—' : String(comparison.a[key])}</td>
+                <td>{comparison.b[key] == null ? '—' : String(comparison.b[key])}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
   )
 }
 
@@ -502,6 +644,13 @@ function StageCard({ stage }: { stage: ExperimentStage }) {
 
       {stage.error && stage.status === 'error' && (
         <p className="error-text">{stage.error}</p>
+      )}
+
+      {stage.gate && stage.gate.approved !== undefined && (
+        <p className="config-subtitle">
+          {stage.gate.approved ? '✅ you approved' : '⛔ you rejected'}
+          {stage.gate.note ? ` — ${stage.gate.note}` : ''}
+        </p>
       )}
 
       {stage.verdicts.length > 0 && (

@@ -60,17 +60,25 @@ class ExperimentStore:
                     status TEXT NOT NULL,
                     error TEXT,
                     stages TEXT NOT NULL,
+                    human_gates INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
                 """
             )
+            try:
+                conn.execute(
+                    "ALTER TABLE experiments ADD COLUMN human_gates INTEGER NOT NULL DEFAULT 0"
+                )
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
     def list(self) -> list[dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
             rows = conn.execute(
                 "SELECT id, objective, source_id, target, status, error, stages, "
-                "created_at, updated_at FROM experiments ORDER BY created_at DESC"
+                "human_gates, created_at, updated_at FROM experiments "
+                "ORDER BY created_at DESC"
             ).fetchall()
         summaries = []
         for row in rows:
@@ -85,8 +93,9 @@ class ExperimentStore:
                     "error": row[5],
                     "stages_done": sum(1 for s in stages if s["status"] == "ok"),
                     "stages_total": len(stages),
-                    "created_at": row[7],
-                    "updated_at": row[8],
+                    "human_gates": bool(row[7]),
+                    "created_at": row[8],
+                    "updated_at": row[9],
                 }
             )
         return summaries
@@ -95,7 +104,7 @@ class ExperimentStore:
         with sqlite3.connect(self.db_path) as conn:
             row = conn.execute(
                 "SELECT id, objective, source_id, target, status, error, stages, "
-                "created_at, updated_at FROM experiments WHERE id = ?",
+                "human_gates, created_at, updated_at FROM experiments WHERE id = ?",
                 (experiment_id,),
             ).fetchone()
         if row is None:
@@ -108,18 +117,24 @@ class ExperimentStore:
             "status": row[4],
             "error": row[5],
             "stages": json.loads(row[6]),
-            "created_at": row[7],
-            "updated_at": row[8],
+            "human_gates": bool(row[7]),
+            "created_at": row[8],
+            "updated_at": row[9],
         }
 
     def create(
-        self, objective: str, source_id: str, target: str | None
+        self,
+        objective: str,
+        source_id: str,
+        target: str | None,
+        human_gates: bool = False,
     ) -> dict[str, Any]:
         experiment = {
             "id": uuid.uuid4().hex,
             "objective": objective,
             "source_id": source_id,
             "target": target,
+            "human_gates": human_gates,
             "status": "queued",
             "error": None,
             "stages": [
@@ -132,7 +147,8 @@ class ExperimentStore:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 "INSERT INTO experiments (id, objective, source_id, target, status, "
-                "error, stages, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                "error, stages, human_gates, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (
                     experiment["id"],
                     objective,
@@ -141,6 +157,7 @@ class ExperimentStore:
                     "queued",
                     None,
                     json.dumps(experiment["stages"]),
+                    1 if human_gates else 0,
                     experiment["created_at"],
                     experiment["updated_at"],
                 ),
@@ -172,6 +189,7 @@ class ExperimentStore:
 
 _store: ExperimentStore | None = None
 _running: dict[str, asyncio.Task] = {}
+_gates: dict[str, asyncio.Future] = {}
 
 
 def get_experiment_store() -> ExperimentStore:
@@ -185,6 +203,51 @@ def reset_experiment_store() -> None:
     global _store
     _store = None
     _running.clear()
+    _gates.clear()
+
+
+def resolve_gate(experiment_id: str, approve: bool, note: str | None = None) -> bool:
+    """Answer a waiting human gate; returns False if nothing is waiting."""
+    future = _gates.pop(experiment_id, None)
+    if future is None or future.done():
+        return False
+    future.set_result({"approve": approve, "note": note})
+    return True
+
+
+async def _human_gate(
+    experiment: dict[str, Any],
+    stage: dict[str, Any],
+    store: "ExperimentStore",
+    question: str,
+    preview: dict[str, Any],
+) -> None:
+    """Pause the pipeline until the user approves; raises on rejection."""
+    if not experiment.get("human_gates"):
+        return
+    stage["gate"] = {
+        "question": question,
+        "preview": preview,
+        "requested_at": _now(),
+    }
+    experiment["status"] = "waiting"
+    store.save(experiment)
+
+    future: asyncio.Future = asyncio.get_running_loop().create_future()
+    _gates[experiment["id"]] = future
+    decision = await future
+
+    stage["gate"]["decided_at"] = _now()
+    stage["gate"]["approved"] = bool(decision.get("approve"))
+    if decision.get("note"):
+        stage["gate"]["note"] = decision["note"]
+    experiment["status"] = "running"
+    store.save(experiment)
+    if not decision.get("approve"):
+        raise RuntimeError(
+            f"Stopped at human gate ({stage['name']})"
+            + (f": {decision.get('note')}" if decision.get("note") else "")
+        )
 
 
 # ------------------------------------------------------------------ the crew
@@ -495,6 +558,19 @@ async def _run_model_stage(
             await review_artifact("model proposal", proposal, plan, features_context)
         )
 
+    store = get_experiment_store()
+    await _human_gate(
+        experiment,
+        stage,
+        store,
+        "Approve this modeling approach before training?",
+        {
+            "approach": proposal.get("approach"),
+            "model_type": proposal.get("model_type"),
+            "rationale": proposal.get("rationale"),
+        },
+    )
+
     if proposal.get("approach") == "code":
         from app.code_stage import run_code_stage
 
@@ -704,6 +780,18 @@ async def run_experiment(experiment_id: str) -> None:
                 last_error = "cleaning produced zero rows"
                 continue
 
+            await _human_gate(
+                experiment,
+                stage,
+                store,
+                "Approve this cleaning transformation before it materializes?",
+                {
+                    "intent": draft["intent"],
+                    "sql": draft["sql"],
+                    "resulting_rows": len(rows),
+                },
+            )
+
             from genxai.core.datasets import get_dataset_store
 
             dataset_name = f"exp_{experiment['id'][:8]}_clean"
@@ -838,3 +926,164 @@ def start_experiment(experiment_id: str) -> None:
     task = asyncio.create_task(run_experiment(experiment_id))
     _running[experiment_id] = task
     task.add_done_callback(lambda _t: _running.pop(experiment_id, None))
+
+
+# ---------------------------------------------------------- compare / export
+
+
+def compare_experiments(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
+    """Side-by-side summary of two experiments."""
+
+    def summarize(experiment: dict[str, Any]) -> dict[str, Any]:
+        stages = {s["name"]: s for s in experiment["stages"]}
+        model = (stages.get("model", {}).get("artifact") or {})
+        report = (stages.get("report", {}).get("artifact") or {})
+        return {
+            "id": experiment["id"],
+            "objective": experiment["objective"],
+            "status": experiment["status"],
+            "source_id": experiment["source_id"],
+            "cleaned_rows": (stages.get("clean", {}).get("artifact") or {}).get("row_count"),
+            "feature_columns": len(
+                (stages.get("features", {}).get("artifact") or {}).get("columns") or []
+            ),
+            "model_type": model.get("model_type") or model.get("approach"),
+            "cv_mean": (model.get("cross_validation") or {}).get("mean"),
+            "cv_overfit": (model.get("cross_validation") or {}).get("overfit_warning"),
+            "holdout_metrics": model.get("holdout_metrics") or model.get("metrics"),
+            "recommendation": report.get("recommendation"),
+            "updated_at": experiment["updated_at"],
+        }
+
+    return {"a": summarize(a), "b": summarize(b)}
+
+
+def build_export_zip(experiment: dict[str, Any]) -> bytes:
+    """Bundle the experiment as a runnable Python project (zip bytes)."""
+    import io
+    import zipfile
+
+    stages = {s["name"]: s for s in experiment["stages"]}
+    plan = stages.get("plan", {}).get("artifact") or {}
+    clean = stages.get("clean", {}).get("artifact") or {}
+    features = stages.get("features", {}).get("artifact") or {}
+    model = stages.get("model", {}).get("artifact") or {}
+    viz = stages.get("viz", {}).get("artifact") or {}
+    report = stages.get("report", {}).get("artifact") or {}
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as bundle:
+        readme = [
+            f"# Experiment: {experiment['objective']}",
+            "",
+            f"Status: {experiment['status']}",
+            f"Plan: {json.dumps(plan)}",
+            "",
+            "## How to run",
+            "```",
+            "pip install duckdb pandas pyarrow scikit-learn matplotlib joblib",
+            "python run.py          # clean -> features -> (train if spec)",
+            "python visualization.py  # figures into out/figures/",
+            "```",
+            "",
+            "Files: data/source_sample.parquet (capped sample), sql/*.sql "
+            "(the reviewed transformations), model/, visualization.py.",
+        ]
+        if report.get("report"):
+            readme += ["", "## Final report", "", str(report["report"])]
+        bundle.writestr("README.md", "\n".join(readme))
+
+        explore = stages.get("explore", {}).get("artifact") or {}
+        for index, query in enumerate(explore.get("queries") or [], 1):
+            bundle.writestr(
+                f"sql/01_exploration_{index}.sql",
+                f"-- {query.get('purpose', '')}\n{query.get('sql', '')}\n",
+            )
+        if clean.get("sql"):
+            bundle.writestr(
+                "sql/02_clean.sql", f"-- {clean.get('intent', '')}\n{clean['sql']}\n"
+            )
+        if features.get("sql"):
+            bundle.writestr(
+                "sql/03_features.sql",
+                f"-- {features.get('intent', '')}\n{features['sql']}\n",
+            )
+
+        if model.get("approach") == "spec":
+            bundle.writestr(
+                "model/spec.json",
+                json.dumps(
+                    {
+                        "model_type": model.get("model_type"),
+                        "target": plan.get("target") or experiment.get("target"),
+                        "cross_validation": model.get("cross_validation"),
+                        "holdout_metrics": model.get("holdout_metrics"),
+                    },
+                    indent=2,
+                    default=str,
+                ),
+            )
+        elif model.get("code"):
+            bundle.writestr("model/train.py", str(model["code"]))
+        if viz.get("code"):
+            bundle.writestr("visualization.py", str(viz["code"]))
+
+        # Capped source sample so the project runs offline
+        try:
+            from app.data_catalog import export_source, get_adapter, resolve_source
+
+            source = resolve_source(experiment["source_id"])
+            if source is not None:
+                _, payload, _ = export_source(source, get_adapter(source), "parquet")
+                bundle.writestr("data/source_sample.parquet", payload)
+        except Exception as exc:  # pragma: no cover - defensive
+            bundle.writestr("data/EXPORT_ERROR.txt", str(exc))
+
+        target = plan.get("target") or experiment.get("target")
+        run_py = f'''"""Re-run the experiment pipeline locally (generated by GenXAI)."""
+
+import duckdb
+from pathlib import Path
+
+con = duckdb.connect()
+con.execute("CREATE VIEW data AS SELECT * FROM read_parquet('data/source_sample.parquet')")
+
+clean_sql = Path("sql/02_clean.sql").read_text().split("\\n", 1)[1]
+con.execute(f"CREATE TABLE cleaned AS {{clean_sql}}")
+con.execute("DROP VIEW data")
+con.execute("CREATE VIEW data AS SELECT * FROM cleaned")
+
+features_sql = Path("sql/03_features.sql").read_text().split("\\n", 1)[1]
+con.execute(f"CREATE TABLE features AS {{features_sql}}")
+Path("data").mkdir(exist_ok=True)
+con.execute("COPY features TO 'data/data.parquet' (FORMAT PARQUET)")
+print("features written to data/data.parquet:",
+      con.execute("SELECT COUNT(*) FROM features").fetchone()[0], "rows")
+
+TARGET = {json.dumps(target)}
+SPEC = Path("model/spec.json")
+if TARGET and SPEC.exists():
+    import json as _json
+    import pandas as pd
+    from sklearn.model_selection import train_test_split
+
+    spec = _json.loads(SPEC.read_text())
+    df = pd.read_parquet("data/data.parquet").dropna()
+    y = df[TARGET]
+    X = df.drop(columns=[TARGET]).select_dtypes("number")
+    X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=42)
+    from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+    from sklearn.linear_model import LinearRegression, LogisticRegression
+
+    est = {{
+        "linear_regression": LinearRegression(),
+        "logistic_regression": LogisticRegression(max_iter=1000),
+        "random_forest_regression": RandomForestRegressor(random_state=42),
+        "random_forest_classification": RandomForestClassifier(random_state=42),
+    }}[spec["model_type"]]
+    est.fit(X_tr, y_tr)
+    print("holdout score:", est.score(X_te, y_te))
+'''
+        bundle.writestr("run.py", run_py)
+
+    return buffer.getvalue()

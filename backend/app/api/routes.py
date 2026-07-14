@@ -42,6 +42,7 @@ from app.schemas import (
     CredentialCreate,
     DatasetAnalyzeRequest,
     ExperimentCreate,
+    GateDecision,
     GenerateRequest,
     HumanInputResponse,
     MaterializeRequest,
@@ -1679,7 +1680,10 @@ async def create_experiment(payload: ExperimentCreate) -> dict:
             status_code=404, detail=f"Source '{payload.source}' not found"
         )
     experiment = get_experiment_store().create(
-        objective, payload.source, (payload.target or "").strip() or None
+        objective,
+        payload.source,
+        (payload.target or "").strip() or None,
+        human_gates=payload.human_gates,
     )
     start_experiment(experiment["id"])
     return experiment
@@ -1728,3 +1732,48 @@ def delete_experiment(experiment_id: str) -> None:
 
     if not get_experiment_store().delete(experiment_id):
         raise HTTPException(status_code=404, detail="Experiment not found")
+
+
+@router.post("/datascience/experiments/{experiment_id}/resume")
+def resume_experiment_gate(experiment_id: str, payload: GateDecision) -> dict:
+    """Answer a waiting human gate (approve or reject with a note)."""
+    from app.experiments import get_experiment_store, resolve_gate
+
+    experiment = get_experiment_store().get(experiment_id)
+    if experiment is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    if not resolve_gate(experiment_id, payload.approve, payload.note):
+        raise HTTPException(status_code=409, detail="No gate is waiting")
+    return {"status": "resumed", "approved": payload.approve}
+
+
+@router.get("/datascience/experiments/{experiment_id}/compare/{other_id}")
+def compare_experiments_endpoint(experiment_id: str, other_id: str) -> dict:
+    from app.experiments import compare_experiments, get_experiment_store
+
+    store = get_experiment_store()
+    a = store.get(experiment_id)
+    b = store.get(other_id)
+    if a is None or b is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    return compare_experiments(a, b)
+
+
+@router.get("/datascience/experiments/{experiment_id}/export")
+def export_experiment(experiment_id: str) -> "Response":
+    """Download the experiment as a runnable Python project (zip)."""
+    from fastapi import Response
+
+    from app.experiments import build_export_zip, get_experiment_store
+
+    experiment = get_experiment_store().get(experiment_id)
+    if experiment is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    payload = build_export_zip(experiment)
+    return Response(
+        content=payload,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="experiment_{experiment_id[:8]}.zip"'
+        },
+    )

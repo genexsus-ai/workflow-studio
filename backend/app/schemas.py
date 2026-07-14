@@ -226,3 +226,9 @@ class ExperimentCreate(BaseModel):
     objective: str
     source: str
     target: str | None = None
+    human_gates: bool = False
+
+
+class GateDecision(BaseModel):
+    approve: bool
+    note: str | None = None

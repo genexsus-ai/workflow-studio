@@ -279,3 +279,136 @@ def test_full_pipeline_with_model_and_report(client, monkeypatch):
     assert report["recommendation"] in ("ship", "iterate", "abandon")
     assert report["report"].startswith("#")
     assert calls["report"] == 1
+
+
+# ------------------------------------------------------------------------ P3
+
+
+def _wait_status(client, experiment_id: str, statuses: tuple) -> dict:
+    for _ in range(200):
+        experiment = client.get(
+            f"/api/v1/datascience/experiments/{experiment_id}"
+        ).json()
+        if experiment["status"] in statuses:
+            return experiment
+        time.sleep(0.05)
+    raise AssertionError(f"never reached {statuses}: {experiment['status']}")
+
+
+def test_human_gate_pauses_and_approval_continues(client, monkeypatch):
+    _seed_orders()
+    _stub_crew(monkeypatch)
+
+    created = client.post(
+        "/api/v1/datascience/experiments",
+        json={"objective": "x", "source": "dataset:orders", "human_gates": True},
+    ).json()
+
+    waiting = _wait_status(client, created["id"], ("waiting",))
+    clean_stage = next(s for s in waiting["stages"] if s["name"] == "clean")
+    assert "cleaning transformation" in clean_stage["gate"]["question"]
+    assert clean_stage["gate"]["preview"]["resulting_rows"] == 2
+
+    resumed = client.post(
+        f"/api/v1/datascience/experiments/{created['id']}/resume",
+        json={"approve": True},
+    )
+    assert resumed.status_code == 200
+    done = _wait_done(client, created["id"])
+    assert done["status"] == "ok"
+    gate = next(s for s in done["stages"] if s["name"] == "clean")["gate"]
+    assert gate["approved"] is True
+
+
+def test_human_gate_rejection_stops_pipeline(client, monkeypatch):
+    _seed_orders()
+    _stub_crew(monkeypatch)
+
+    created = client.post(
+        "/api/v1/datascience/experiments",
+        json={"objective": "x", "source": "dataset:orders", "human_gates": True},
+    ).json()
+    _wait_status(client, created["id"], ("waiting",))
+
+    client.post(
+        f"/api/v1/datascience/experiments/{created['id']}/resume",
+        json={"approve": False, "note": "wrong null handling"},
+    )
+    done = _wait_done(client, created["id"])
+    assert done["status"] == "error"
+    assert "human gate" in done["error"]
+    assert "wrong null handling" in done["error"]
+
+    # No dataset was materialized
+    assert (
+        client.get(f"/api/v1/datasets/exp_{created['id'][:8]}_clean/rows").json()["total"]
+        == 0
+    )
+
+
+def test_resume_without_waiting_gate_conflicts(client, monkeypatch):
+    _seed_orders()
+    _stub_crew(monkeypatch)
+    created = client.post(
+        "/api/v1/datascience/experiments",
+        json={"objective": "x", "source": "dataset:orders"},
+    ).json()
+    _wait_done(client, created["id"])
+    response = client.post(
+        f"/api/v1/datascience/experiments/{created['id']}/resume",
+        json={"approve": True},
+    )
+    assert response.status_code == 409
+
+
+def test_compare_experiments(client, monkeypatch):
+    _seed_orders()
+    _stub_crew(monkeypatch)
+    first = client.post(
+        "/api/v1/datascience/experiments",
+        json={"objective": "first", "source": "dataset:orders"},
+    ).json()
+    second = client.post(
+        "/api/v1/datascience/experiments",
+        json={"objective": "second", "source": "dataset:orders"},
+    ).json()
+    _wait_done(client, first["id"])
+    _wait_done(client, second["id"])
+
+    comparison = client.get(
+        f"/api/v1/datascience/experiments/{first['id']}/compare/{second['id']}"
+    ).json()
+    assert comparison["a"]["objective"] == "first"
+    assert comparison["b"]["objective"] == "second"
+    assert comparison["a"]["cleaned_rows"] == 2
+    assert comparison["a"]["recommendation"] == "iterate"
+
+
+def test_export_is_a_runnable_project(client, monkeypatch):
+    import io
+    import zipfile
+
+    _seed_orders()
+    _stub_crew(monkeypatch)
+    created = client.post(
+        "/api/v1/datascience/experiments",
+        json={"objective": "exportable", "source": "dataset:orders"},
+    ).json()
+    _wait_done(client, created["id"])
+
+    response = client.get(
+        f"/api/v1/datascience/experiments/{created['id']}/export"
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+
+    bundle = zipfile.ZipFile(io.BytesIO(response.content))
+    names = set(bundle.namelist())
+    assert {"README.md", "sql/02_clean.sql", "run.py",
+            "visualization.py", "data/source_sample.parquet"} <= names
+    clean_sql = bundle.read("sql/02_clean.sql").decode()
+    assert "SELECT DISTINCT" in clean_sql
+    readme = bundle.read("README.md").decode()
+    assert "exportable" in readme and "Final report" in readme
+    # The bundled sample parquet is genuine
+    assert bundle.read("data/source_sample.parquet")[:4] == b"PAR1"

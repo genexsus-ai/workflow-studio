@@ -544,6 +544,12 @@ export interface ExperimentStage {
   status: string
   artifact?: Record<string, unknown> | null
   verdicts: { verdict: string; reason: string }[]
+  gate?: {
+    question: string
+    preview?: Record<string, unknown>
+    approved?: boolean
+    note?: string
+  } | null
   error?: string | null
 }
 
@@ -575,11 +581,21 @@ export interface Experiment {
 export const listExperiments = () =>
   fetch(`${API}/datascience/experiments`).then((r) => json<ExperimentSummary[]>(r))
 
-export const createExperiment = (objective: string, source: string, target?: string) =>
+export const createExperiment = (
+  objective: string,
+  source: string,
+  target?: string,
+  humanGates = false,
+) =>
   fetch(`${API}/datascience/experiments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ objective, source, target: target || null }),
+    body: JSON.stringify({
+      objective,
+      source,
+      target: target || null,
+      human_gates: humanGates,
+    }),
   }).then((r) => json<Experiment>(r))
 
 export const getExperiment = (id: string) =>
@@ -590,3 +606,15 @@ export const rerunExperiment = (id: string) =>
 
 export const deleteExperiment = (id: string) =>
   fetch(`${API}/datascience/experiments/${id}`, { method: 'DELETE' })
+
+export const resumeExperiment = (id: string, approve: boolean, note?: string) =>
+  fetch(`${API}/datascience/experiments/${id}/resume`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approve, note: note || null }),
+  }).then((r) => json<{ status: string }>(r))
+
+export const compareExperiments = (id: string, otherId: string) =>
+  fetch(`${API}/datascience/experiments/${id}/compare/${otherId}`).then((r) =>
+    json<{ a: Record<string, unknown>; b: Record<string, unknown> }>(r),
+  )
