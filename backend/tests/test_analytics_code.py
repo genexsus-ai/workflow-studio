@@ -138,3 +138,81 @@ def test_code_analysis_missing_source_404(client):
         json={"request": "anything at all"},
     )
     assert response.status_code == 404
+
+
+# ------------------------------------------------------------ dashboard report
+
+
+DASHBOARD_CODE = """
+import json
+import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+df = pd.read_parquet("data/data.parquet")
+totals = df.groupby("region")["total"].sum()
+for name in ("chart_totals", "chart_counts"):
+    totals.plot(kind="bar")
+    plt.savefig(f"out/figures/{name}.png")
+    plt.close()
+with open("out/metrics.json", "w") as fh:
+    json.dump({"regions": int(totals.size), "grand_total": int(totals.sum())}, fh)
+print("grand total:", int(totals.sum()))
+"""
+
+
+def _stub_dashboard_crew(monkeypatch):
+    import app.analytics_code as ac
+
+    async def draft(request, context, feedback=None):
+        assert "dashboard" in request
+        return DASHBOARD_CODE
+
+    async def review(code, request, context):
+        return {"verdict": "approve", "reason": "solid"}
+
+    async def narrate(source_name, context, metrics, stdout, figure_names, focus):
+        assert metrics == {"regions": 2, "grand_total": 22}
+        assert "grand total: 22" in stdout
+        assert len(figure_names) == 2
+        return "## Overview\nTwo regions.\n\n## Key findings\n- grand total 22"
+
+    monkeypatch.setattr(ac, "draft_analysis_code", draft)
+    monkeypatch.setattr(ac, "review_analysis_code", review)
+    monkeypatch.setattr(ac, "narrate_dashboard", narrate)
+
+
+def test_dashboard_report_lifecycle(client, monkeypatch):
+    _seed_orders()
+    _stub_dashboard_crew(monkeypatch)
+
+    created = client.post(
+        "/api/v1/analytics/sources/dataset:orders/report",
+        json={"focus": "regional totals"},
+    )
+    assert created.status_code == 201, created.text
+    report = created.json()
+    assert report["focus"] == "regional totals"
+    assert report["report"].startswith("## Overview")
+    assert report["metrics"]["grand_total"] == 22
+    assert len(report["figures"]) == 2
+    for figure in report["figures"]:
+        png = client.get(f"/api/v1/files/{figure['id']}")
+        assert png.status_code == 200
+        assert png.content[:8].startswith(b"\x89PNG")
+
+    # Persisted: listed (filtered by source) and retrievable by id
+    listing = client.get(
+        "/api/v1/analytics/reports?source=dataset:orders"
+    ).json()
+    assert [entry["id"] for entry in listing] == [report["id"]]
+    assert listing[0]["figures"] == 2
+    fetched = client.get(f"/api/v1/analytics/reports/{report['id']}").json()
+    assert fetched["report"] == report["report"]
+
+    # And deletable
+    assert client.delete(
+        f"/api/v1/analytics/reports/{report['id']}"
+    ).status_code == 204
+    assert client.get(f"/api/v1/analytics/reports/{report['id']}").status_code == 404

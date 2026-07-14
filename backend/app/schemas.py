@@ -114,6 +114,11 @@ class CodeAnalysisRequest(BaseModel):
     request: str = Field(min_length=3)
 
 
+class DashboardReportRequest(BaseModel):
+    # Optional emphasis for the dashboard (e.g. "revenue by region")
+    focus: str | None = None
+
+
 class SourceCreate(BaseModel):
     name: str
     kind: str  # "sql" | "file"

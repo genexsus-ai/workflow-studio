@@ -13,8 +13,12 @@ from __future__ import annotations
 import json
 import logging
 import re
+import sqlite3
+import uuid
+from datetime import UTC, datetime
 from typing import Any
 
+from app.config import get_settings
 from app.data_catalog import get_adapter, profile_source, resolve_source
 
 logger = logging.getLogger(__name__)
@@ -164,5 +168,182 @@ async def run_code_analysis(source_id: str, request: str) -> dict[str, Any]:
         "review": verdicts,
         "figures": result.get("figures") or [],
         "datasets": written,
+        "metrics": result.get("metrics"),
         "stdout": (result.get("stdout") or "")[-2000:],
     }
+
+
+# ------------------------------------------------------------ dashboard report
+
+
+DASHBOARD_REQUEST = (
+    "Build a compact analytics dashboard for this data{focus}. Produce 3-6 "
+    "distinct, informative matplotlib charts (trend over time if a time-like "
+    "column exists, top categories, distributions, comparisons — whatever "
+    "the columns support), each saved to ./out/figures/<slug>.png with a "
+    "clear title and labeled axes. Compute the key summary numbers behind "
+    "the charts, write them as one flat JSON object to ./out/metrics.json, "
+    "and print a short plain-text summary to stdout."
+)
+
+
+class ReportStore:
+    """Dashboard reports: one JSON payload per report in the datasets DB."""
+
+    def __init__(self) -> None:
+        self.db_path = get_settings().data_dir / "datasets.db"
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS analytics_reports (
+                    id TEXT PRIMARY KEY,
+                    source_id TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+
+    def list(self, source_id: str | None = None) -> list[dict[str, Any]]:
+        query = (
+            "SELECT id, source_id, payload, created_at FROM analytics_reports"
+        )
+        params: tuple = ()
+        if source_id:
+            query += " WHERE source_id = ?"
+            params = (source_id,)
+        query += " ORDER BY created_at DESC"
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute(query, params).fetchall()
+        summaries = []
+        for row in rows:
+            payload = json.loads(row[2])
+            summaries.append(
+                {
+                    "id": row[0],
+                    "source": row[1],
+                    "focus": payload.get("focus"),
+                    "figures": len(payload.get("figures") or []),
+                    "created_at": row[3],
+                }
+            )
+        return summaries
+
+    def get(self, report_id: str) -> dict[str, Any] | None:
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT payload FROM analytics_reports WHERE id = ?",
+                (report_id,),
+            ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def save(self, report: dict[str, Any]) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "INSERT INTO analytics_reports (id, source_id, payload, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (
+                    report["id"],
+                    report["source"],
+                    json.dumps(report, default=str),
+                    report["created_at"],
+                ),
+            )
+
+    def delete(self, report_id: str) -> bool:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "DELETE FROM analytics_reports WHERE id = ?", (report_id,)
+            )
+        return cursor.rowcount > 0
+
+
+_report_store: ReportStore | None = None
+
+
+def get_report_store() -> ReportStore:
+    global _report_store
+    if _report_store is None:
+        _report_store = ReportStore()
+    return _report_store
+
+
+async def narrate_dashboard(
+    source_name: str,
+    context: str,
+    metrics: Any,
+    stdout: str,
+    figure_names: list[str],
+    focus: str | None,
+) -> str:
+    """Analytics Reporter: structured markdown grounded in computed results."""
+    from app.analyst import run_analyst
+    from app.experiments import _normalize_report_markdown
+
+    focus_line = f"Requested focus: {focus}\n" if focus else ""
+    prompt = (
+        f"Data source: {source_name}\n{focus_line}"
+        f"{context[:2000]}\n\n"
+        f"Computed metrics (metrics.json): {json.dumps(metrics, default=str)[:2000]}\n"
+        f"Script output:\n{stdout[:2000]}\n"
+        f"Charts generated: {', '.join(figure_names) or '(none)'}\n\n"
+        "Write the dashboard narrative as GitHub-flavored markdown with "
+        "EXACTLY these three '## ' sections:\n"
+        "## Overview\n"
+        "## Key findings\n"
+        "Bullet points grounded ONLY in the computed metrics and script "
+        "output above — never invent numbers.\n"
+        "## What to watch\n\n"
+        "Use real newlines. Do NOT wrap the markdown in any tag or fence. "
+        "Reply with ONLY the markdown."
+    )
+    result = await run_analyst(
+        prompt,
+        role="Analytics Reporter",
+        goal="Explain the dashboard honestly, grounded in computed numbers",
+        backstory="Return only markdown. No preamble.",
+    )
+    return _normalize_report_markdown(result["output"])
+
+
+async def run_dashboard_report(
+    source_id: str, focus: str | None = None
+) -> dict[str, Any]:
+    """Code crew builds the charts; the Reporter narrates; the store keeps it."""
+    source = resolve_source(source_id)
+    if source is None:
+        raise LookupError(f"Source '{source_id}' not found")
+
+    request = DASHBOARD_REQUEST.format(
+        focus=f", focused on: {focus}" if focus else ""
+    )
+    analysis = await run_code_analysis(source_id, request)
+
+    adapter = get_adapter(source)
+    context = _source_context(source, adapter)
+    report_md = await narrate_dashboard(
+        source["name"],
+        context,
+        analysis.get("metrics"),
+        analysis.get("stdout") or "",
+        [figure["name"] for figure in analysis["figures"]],
+        focus,
+    )
+
+    report = {
+        "id": uuid.uuid4().hex,
+        "source": source_id,
+        "source_name": source["name"],
+        "focus": focus,
+        "report": report_md,
+        "figures": analysis["figures"],
+        "datasets": analysis["datasets"],
+        "metrics": analysis.get("metrics"),
+        "stdout": analysis.get("stdout") or "",
+        "code": analysis["code"],
+        "review": analysis["review"],
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    get_report_store().save(report)
+    return report

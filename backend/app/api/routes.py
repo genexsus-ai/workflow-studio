@@ -41,6 +41,7 @@ from app.schemas import (
     AutomationConfig,
     CredentialCreate,
     CodeAnalysisRequest,
+    DashboardReportRequest,
     DatasetAnalyzeRequest,
     ExperimentCreate,
     GateDecision,
@@ -897,6 +898,49 @@ async def code_analysis(source_id: str, payload: CodeAnalysisRequest) -> dict:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/analytics/sources/{source_id}/report", status_code=201)
+async def create_dashboard_report(
+    source_id: str, payload: DashboardReportRequest
+) -> dict:
+    """Code crew builds 3-6 charts; the Analytics Reporter narrates; saved."""
+    from app.analytics_code import run_dashboard_report
+
+    _resolve_source_or_404(source_id)
+    try:
+        return await run_dashboard_report(source_id, payload.focus)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/analytics/reports")
+def list_dashboard_reports(source: str | None = None) -> list[dict]:
+    from app.analytics_code import get_report_store
+
+    return get_report_store().list(source)
+
+
+@router.get("/analytics/reports/{report_id}")
+def get_dashboard_report(report_id: str) -> dict:
+    from app.analytics_code import get_report_store
+
+    report = get_report_store().get(report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return report
+
+
+@router.delete("/analytics/reports/{report_id}", status_code=204)
+def delete_dashboard_report(report_id: str) -> None:
+    from app.analytics_code import get_report_store
+
+    if not get_report_store().delete(report_id):
+        raise HTTPException(status_code=404, detail="Report not found")
 
 
 @router.post("/analytics/sources/{source_id}/materialize", status_code=201)

@@ -5,7 +5,11 @@ import {
   analyzeSource,
   apiBase,
   codeAnalysis,
+  createDashboardReport,
   createSource,
+  deleteDashboardReport,
+  getDashboardReport,
+  listDashboardReports,
   deleteDataset,
   deleteSource,
   getSourceProfile,
@@ -17,8 +21,11 @@ import {
   materializeSource,
   uploadFile,
   type CodeAnalysis,
+  type DashboardReport,
+  type DashboardReportSummary,
   type SourceProfile,
 } from '../api'
+import Markdown from './Markdown'
 import type {
   CredentialSummary,
   DatasetAggregateEntry,
@@ -747,6 +754,7 @@ function SourceDetail({
       <ChartBuilder sourceId={source.id} columns={columns} numericColumns={numericColumns} />
       {source.kind === 'sql' && <MaterializeSection source={source} />}
       <AnalyzeSection sourceId={source.id} />
+      <DashboardReportSection sourceId={source.id} />
       <CodeAnalysisSection sourceId={source.id} />
 
       <section className="insights-card">
@@ -1040,6 +1048,137 @@ function MaterializeSection({ source }: { source: SourceSummary }) {
           </div>
           {error && <p className="error-text">{error}</p>}
         </>
+      )}
+    </section>
+  )
+}
+
+function DashboardReportSection({ sourceId }: { sourceId: string }) {
+  const [summaries, setSummaries] = useState<DashboardReportSummary[]>([])
+  const [report, setReport] = useState<DashboardReport | null>(null)
+  const [focus, setFocus] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const refresh = useCallback(
+    () => listDashboardReports(sourceId).then(setSummaries).catch(() => {}),
+    [sourceId],
+  )
+
+  useEffect(() => {
+    setReport(null)
+    setError(null)
+    refresh()
+  }, [refresh])
+
+  const generate = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const created = await createDashboardReport(sourceId, focus.trim() || undefined)
+      setReport(created)
+      refresh()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const open = async (id: string) => {
+    setError(null)
+    try {
+      setReport(await getDashboardReport(id))
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
+  return (
+    <section className="insights-card">
+      <h2>Dashboard report</h2>
+      <p className="config-subtitle">
+        The code crew builds 3–6 charts over the full data; the Analytics
+        Reporter writes the narrative from the computed numbers. Reports are
+        saved per source.
+      </p>
+      <div className="insights-filters">
+        <input
+          className="analyze-question"
+          value={focus}
+          placeholder="Optional focus, e.g. revenue by region"
+          onChange={(event) => setFocus(event.target.value)}
+        />
+        <button className="primary-small" disabled={busy} onClick={generate}>
+          {busy ? 'Building dashboard…' : '📊 Generate'}
+        </button>
+      </div>
+      {error && <p className="error-text">{error}</p>}
+      {summaries.length > 0 && (
+        <p className="config-subtitle">
+          Saved:{' '}
+          {summaries.map((summary, index) => (
+            <span key={summary.id}>
+              {index > 0 && ' · '}
+              <button
+                className="link-button"
+                onClick={() => open(summary.id)}
+              >
+                {new Date(summary.created_at).toLocaleString()}
+                {summary.focus ? ` (${summary.focus})` : ''}
+              </button>
+            </span>
+          ))}
+        </p>
+      )}
+      {report && (
+        <div className="analyze-result">
+          <div className="figure-row">
+            {report.figures.map((figure) => (
+              <a
+                key={figure.id}
+                href={`${apiBase}/files/${figure.id}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <img src={`${apiBase}/files/${figure.id}`} alt={figure.name} />
+              </a>
+            ))}
+          </div>
+          <Markdown text={report.report} />
+          {Object.keys(report.datasets).length > 0 && (
+            <p className="config-subtitle">
+              New datasets:{' '}
+              {Object.entries(report.datasets).map(([name, count], index) => (
+                <span key={name}>
+                  {index > 0 && ', '}
+                  <code>{name}</code> ({count} rows)
+                </span>
+              ))}
+            </p>
+          )}
+          <details className="output-paths">
+            <summary>Python code &amp; output</summary>
+            <pre className="cell-sql">{report.code}</pre>
+            {report.stdout.trim() && (
+              <pre className="cell-sql">{report.stdout.trim()}</pre>
+            )}
+          </details>
+          <p className="config-subtitle">
+            {new Date(report.created_at).toLocaleString()}
+            {' · '}
+            <button
+              className="link-button danger-link"
+              onClick={async () => {
+                await deleteDashboardReport(report.id)
+                setReport(null)
+                refresh()
+              }}
+            >
+              delete report
+            </button>
+          </p>
+        </div>
       )}
     </section>
   )

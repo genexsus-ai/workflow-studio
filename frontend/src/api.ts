@@ -382,6 +382,47 @@ export const codeAnalysis = (id: string, request: string) =>
     body: JSON.stringify({ request }),
   }).then((r) => json<CodeAnalysis>(r))
 
+export interface DashboardReportSummary {
+  id: string
+  source: string
+  focus?: string | null
+  figures: number
+  created_at: string
+}
+
+export interface DashboardReport {
+  id: string
+  source: string
+  source_name: string
+  focus?: string | null
+  report: string
+  figures: { id: string; name: string }[]
+  datasets: Record<string, number>
+  metrics?: Record<string, unknown> | null
+  stdout: string
+  code: string
+  review: { verdict: string; reason: string }[]
+  created_at: string
+}
+
+export const createDashboardReport = (id: string, focus?: string) =>
+  fetch(`${API}/analytics/sources/${id}/report`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ focus: focus || null }),
+  }).then((r) => json<DashboardReport>(r))
+
+export const listDashboardReports = (source: string) =>
+  fetch(`${API}/analytics/reports?source=${encodeURIComponent(source)}`).then((r) =>
+    json<DashboardReportSummary[]>(r),
+  )
+
+export const getDashboardReport = (id: string) =>
+  fetch(`${API}/analytics/reports/${id}`).then((r) => json<DashboardReport>(r))
+
+export const deleteDashboardReport = (id: string) =>
+  fetch(`${API}/analytics/reports/${id}`, { method: 'DELETE' })
+
 export const materializeSource = (
   id: string,
   dataset: string,
