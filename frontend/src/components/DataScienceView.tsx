@@ -649,6 +649,21 @@ function StageCard({ stage }: { stage: ExperimentStage }) {
                 {JSON.stringify(artifact.holdout_metrics ?? artifact.metrics, null, 1)}
               </pre>
             )}
+            {((artifact.figures as { id: string; name: string }[] | undefined) ?? [])
+              .length > 0 && (
+              <div className="figure-row">
+                {(artifact.figures as { id: string; name: string }[]).map((figure) => (
+                  <a
+                    key={figure.id}
+                    href={`${apiBase}/files/${figure.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <img src={`${apiBase}/files/${figure.id}`} alt={figure.name} />
+                  </a>
+                ))}
+              </div>
+            )}
             {Boolean(artifact.predictions_dataset) && (
               <p className="config-subtitle">
                 Predictions → dataset <code>{String(artifact.predictions_dataset)}</code>
@@ -897,6 +912,17 @@ function ModelsPanel() {
             <em>
               {model.model_type.replace(/_/g, ' ')} · {metricLabel(model)}
             </em>
+            {(model.figures ?? []).map((figure) => (
+              <a
+                key={figure.id}
+                className="figure-link"
+                href={`${apiBase}/files/${figure.id}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {figure.name.includes('roc') ? 'ROC curve' : 'diagnostic plot'}
+              </a>
+            ))}
           </span>
           <button
             className="danger"

@@ -43,6 +43,13 @@ def test_train_linear_regression_and_predict_to_dataset(client):
         assert key in metrics and metrics[key] >= 0
     assert abs(metrics["rmse"] ** 2 - metrics["mse"]) < 0.01
 
+    # Regression diagnostic: predicted-vs-actual figure
+    figures = model["figures"]
+    assert len(figures) == 1 and "predicted_vs_actual" in figures[0]["name"]
+    png = client.get(f"/api/v1/files/{figures[0]['id']}")
+    assert png.status_code == 200
+    assert png.content[:8].startswith(b"\x89PNG")
+
     listing = client.get("/api/v1/datascience/models").json()
     assert listing[0]["name"] == "line-fit"
 
@@ -79,6 +86,18 @@ def test_train_classifier(client):
     for key in ("precision_weighted", "recall_weighted", "f1_weighted", "roc_auc"):
         assert key in metrics, f"missing {key}: {metrics}"
         assert 0 <= metrics[key] <= 1
+
+    # ROC curve figure rendered, stored, and served
+    figures = trained["figures"]
+    assert len(figures) == 1 and "roc" in figures[0]["name"]
+    png = client.get(f"/api/v1/files/{figures[0]['id']}")
+    assert png.status_code == 200
+    assert png.content[:8].startswith(b"\x89PNG")
+
+    # ...and it survives the registry round-trip
+    listed = client.get("/api/v1/datascience/models").json()
+    stored = next(m for m in listed if m["id"] == trained["id"])
+    assert stored["figures"] == figures
 
 
 def test_train_validation(client):

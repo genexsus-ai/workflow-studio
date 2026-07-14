@@ -54,12 +54,19 @@ class ModelRegistry:
                 )
                 """
             )
+            try:  # migration: diagnostic figures (ROC / predicted-vs-actual)
+                conn.execute(
+                    "ALTER TABLE models ADD COLUMN figures TEXT NOT NULL DEFAULT '[]'"
+                )
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
     def list(self) -> list[dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 "SELECT id, name, model_type, source_id, target, features, "
-                "metrics, file_id, created_at FROM models ORDER BY created_at DESC"
+                "metrics, file_id, created_at, figures FROM models "
+                "ORDER BY created_at DESC"
             )
             return [self._row_to_dict(row) for row in cursor.fetchall()]
 
@@ -67,7 +74,7 @@ class ModelRegistry:
         with sqlite3.connect(self.db_path) as conn:
             row = conn.execute(
                 "SELECT id, name, model_type, source_id, target, features, "
-                "metrics, file_id, created_at FROM models "
+                "metrics, file_id, created_at, figures FROM models "
                 "WHERE id = ? OR lower(name) = lower(?)",
                 (identifier, identifier),
             ).fetchone()
@@ -77,8 +84,8 @@ class ModelRegistry:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 "INSERT INTO models (id, name, model_type, source_id, target, "
-                "features, metrics, file_id, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "features, metrics, file_id, created_at, figures) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     model["id"],
                     model["name"],
@@ -89,6 +96,7 @@ class ModelRegistry:
                     json.dumps(model["metrics"]),
                     model["file_id"],
                     model["created_at"],
+                    json.dumps(model.get("figures") or []),
                 ),
             )
 
@@ -109,6 +117,7 @@ class ModelRegistry:
             "metrics": json.loads(row[6]),
             "file_id": row[7],
             "created_at": row[8],
+            "figures": json.loads(row[9]) if len(row) > 9 and row[9] else [],
         }
 
 
@@ -180,6 +189,69 @@ def _load_frame(
             f"Only {len(X)} usable rows after dropping incomplete ones — need at least 10"
         )
     return features, X, y, kept
+
+
+def _diagnostic_figure(
+    name: str,
+    estimator: Any,
+    X_test: list[list[float]],
+    y_test: list[Any],
+    is_regression: bool,
+) -> dict[str, Any] | None:
+    """Holdout diagnostic PNG saved to the file store; None on any failure.
+
+    Classification -> ROC curve (per class one-vs-rest when multiclass);
+    regression -> predicted vs. actual with the ideal y=x line. Diagnostics
+    are best-effort: a missing plot must never fail a training run.
+    """
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(5, 4))
+        if is_regression:
+            predictions = estimator.predict(X_test)
+            lo = min(min(y_test), float(min(predictions)))
+            hi = max(max(y_test), float(max(predictions)))
+            ax.scatter(y_test, predictions, s=14, alpha=0.7, edgecolors="none")
+            ax.plot([lo, hi], [lo, hi], "k--", linewidth=0.8, label="ideal (y = x)")
+            ax.set_xlabel("Actual")
+            ax.set_ylabel("Predicted")
+            ax.set_title("Predicted vs. actual (holdout)")
+            ax.legend(loc="lower right", fontsize=8)
+            filename = f"{name}_predicted_vs_actual.png"
+        else:
+            from sklearn.metrics import auc, roc_curve
+
+            proba = estimator.predict_proba(X_test)
+            classes = list(estimator.classes_)
+            curves = (
+                [(classes[1], proba[:, 1])]
+                if len(classes) == 2
+                else [(cls, proba[:, idx]) for idx, cls in enumerate(classes)]
+            )
+            for cls, scores in curves:
+                y_binary = [1 if value == cls else 0 for value in y_test]
+                fpr, tpr, _ = roc_curve(y_binary, scores)
+                ax.plot(fpr, tpr, label=f"{cls} (AUC = {auc(fpr, tpr):.3f})")
+            ax.plot([0, 1], [0, 1], "k--", linewidth=0.8, label="chance")
+            ax.set_xlabel("False positive rate")
+            ax.set_ylabel("True positive rate")
+            ax.set_title("ROC curve (holdout)")
+            ax.legend(loc="lower right", fontsize=8)
+            filename = f"{name}_roc_curve.png"
+        fig.tight_layout()
+        buffer = io.BytesIO()
+        fig.savefig(buffer, format="png", dpi=120)
+        plt.close(fig)
+        return get_file_store().save_bytes(
+            buffer.getvalue(), name=filename, media_type="image/png"
+        )
+    except Exception as exc:
+        logger.warning("Diagnostic figure for '%s' skipped: %s", name, exc)
+        return None
 
 
 def train_model(
@@ -288,6 +360,11 @@ def train_model(
         except Exception:
             pass
 
+    figures = []
+    diagnostic = _diagnostic_figure(name, estimator, X_test, y_test, is_regression)
+    if diagnostic:
+        figures.append(diagnostic)
+
     buffer = io.BytesIO()
     joblib.dump({"estimator": estimator, "features": feature_names}, buffer)
     ref = get_file_store().save_bytes(
@@ -303,6 +380,7 @@ def train_model(
         "features": feature_names,
         "metrics": metrics,
         "file_id": ref["id"],
+        "figures": figures,
         "created_at": datetime.now(UTC).isoformat(),
     }
     get_model_registry().save(model)

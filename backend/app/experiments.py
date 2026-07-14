@@ -829,6 +829,7 @@ async def _run_model_stage(
         "features_used": chosen_features,
         "cross_validation": cv,
         "holdout_metrics": trained["metrics"],
+        "figures": trained.get("figures") or [],
         "predictions_dataset": predictions["dataset"],
     }
     return {

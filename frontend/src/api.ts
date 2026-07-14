@@ -502,6 +502,7 @@ export interface ModelInfo {
   target: string
   features: string[]
   metrics: Record<string, number>
+  figures?: { id: string; name: string }[]
   created_at: string
 }
 

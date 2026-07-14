@@ -275,6 +275,12 @@ def test_full_pipeline_with_model_and_report(client, monkeypatch):
     models = client.get("/api/v1/datascience/models").json()
     assert any(m["name"] == model["model_name"] for m in models)
 
+    # Deterministic diagnostic figure attached to the model stage
+    assert len(model["figures"]) == 1
+    diagnostic = client.get(f"/api/v1/files/{model['figures'][0]['id']}")
+    assert diagnostic.status_code == 200
+    assert diagnostic.content[:8].startswith(b"\x89PNG")
+
     # Viz produced a real figure served by the files endpoint
     viz = stages["viz"]["artifact"]
     assert len(viz["figures"]) >= 1
