@@ -2317,3 +2317,24 @@ button.danger {
   border-color: #2563eb;
   background: #eff6ff;
 }
+
+/* .insights-filters button forces a white background, which beats
+   .primary-small's blue and leaves white-on-white text — restore it with
+   matching specificity. */
+.insights-filters button.primary-small {
+  background: #2563eb;
+  color: #ffffff;
+  border: 1px solid #2563eb;
+}
+
+.insights-filters button.primary-small:disabled {
+  background: #93c5fd;
+  border-color: #93c5fd;
+  cursor: default;
+}
+
+.insights-filters button.danger {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
