@@ -249,3 +249,30 @@ def test_python_analysis_endpoint_removed(client):
         json={"request": "anything"},
     )
     assert response.status_code in (404, 405)
+
+
+def test_dashboard_report_html_export(client, monkeypatch):
+    _seed_orders()
+    _stub_dashboard_crew(monkeypatch)
+
+    report = client.post(
+        "/api/v1/analytics/sources/dataset:orders/report", json={}
+    ).json()
+
+    response = client.get(f"/api/v1/analytics/reports/{report['id']}/export")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "attachment; filename=" in response.headers["content-disposition"]
+
+    html = response.text
+    assert html.startswith("<!doctype html>")
+    # Both figures embedded as self-contained base64 PNGs
+    assert html.count("data:image/png;base64,") == 2
+    # Plan and narrative rendered as real HTML, not raw markdown
+    assert "region totals bar" in html
+    assert "<h3>Overview</h3>" in html
+    assert "## Overview" not in html
+    # Agent text is escaped: no raw < survives from content
+    assert "<script" not in html.lower()
+
+    assert client.get("/api/v1/analytics/reports/nope/export").status_code == 404

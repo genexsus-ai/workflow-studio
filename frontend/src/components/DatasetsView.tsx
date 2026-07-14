@@ -1050,12 +1050,64 @@ function MaterializeSection({ source }: { source: SourceSummary }) {
   )
 }
 
+function Lightbox({
+  figures,
+  index,
+  onClose,
+  onMove,
+}: {
+  figures: { id: string; name: string }[]
+  index: number
+  onClose: () => void
+  onMove: (index: number) => void
+}) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+      if (event.key === 'ArrowRight') onMove((index + 1) % figures.length)
+      if (event.key === 'ArrowLeft') onMove((index - 1 + figures.length) % figures.length)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [figures.length, index, onClose, onMove])
+
+  const figure = figures[index]
+  if (!figure) return null
+  return (
+    <div className="lightbox-overlay" onClick={onClose}>
+      <div className="lightbox-body" onClick={(event) => event.stopPropagation()}>
+        <img src={`${apiBase}/files/${figure.id}`} alt={figure.name} />
+        <div className="lightbox-bar">
+          <span>
+            {figure.name} · {index + 1}/{figures.length}
+          </span>
+          <span>
+            {figures.length > 1 && (
+              <>
+                <button onClick={() => onMove((index - 1 + figures.length) % figures.length)}>
+                  ‹
+                </button>
+                <button onClick={() => onMove((index + 1) % figures.length)}>›</button>
+              </>
+            )}
+            <a href={`${apiBase}/files/${figure.id}`} target="_blank" rel="noreferrer">
+              open PNG
+            </a>
+            <button onClick={onClose}>✕</button>
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function DashboardReportSection({ sourceId }: { sourceId: string }) {
   const [summaries, setSummaries] = useState<DashboardReportSummary[]>([])
   const [report, setReport] = useState<DashboardReport | null>(null)
   const [focus, setFocus] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lightbox, setLightbox] = useState<number | null>(null)
 
   const refresh = useCallback(
     () => listDashboardReports(sourceId).then(setSummaries).catch(() => {}),
@@ -1074,6 +1126,7 @@ function DashboardReportSection({ sourceId }: { sourceId: string }) {
     try {
       const created = await createDashboardReport(sourceId, focus.trim() || undefined)
       setReport(created)
+      setLightbox(null)
       refresh()
     } catch (err) {
       setError((err as Error).message)
@@ -1086,6 +1139,7 @@ function DashboardReportSection({ sourceId }: { sourceId: string }) {
     setError(null)
     try {
       setReport(await getDashboardReport(id))
+      setLightbox(null)
     } catch (err) {
       setError((err as Error).message)
     }
@@ -1131,17 +1185,25 @@ function DashboardReportSection({ sourceId }: { sourceId: string }) {
       {report && (
         <div className="analyze-result">
           <div className="figure-row">
-            {report.figures.map((figure) => (
-              <a
+            {report.figures.map((figure, index) => (
+              <button
                 key={figure.id}
-                href={`${apiBase}/files/${figure.id}`}
-                target="_blank"
-                rel="noreferrer"
+                className="figure-zoom"
+                title="Click to enlarge"
+                onClick={() => setLightbox(index)}
               >
                 <img src={`${apiBase}/files/${figure.id}`} alt={figure.name} />
-              </a>
+              </button>
             ))}
           </div>
+          {lightbox !== null && (
+            <Lightbox
+              figures={report.figures}
+              index={lightbox}
+              onClose={() => setLightbox(null)}
+              onMove={setLightbox}
+            />
+          )}
           {(report.plan ?? []).length > 0 && (
             <details className="output-paths">
               <summary>Chart plan ({report.plan!.length} charts)</summary>
@@ -1178,11 +1240,19 @@ function DashboardReportSection({ sourceId }: { sourceId: string }) {
           <p className="config-subtitle">
             {new Date(report.created_at).toLocaleString()}
             {' · '}
+            <a
+              className="link-button"
+              href={`${apiBase}/analytics/reports/${report.id}/export`}
+            >
+              ⬇ download dashboard (HTML)
+            </a>
+            {' · '}
             <button
               className="link-button danger-link"
               onClick={async () => {
                 await deleteDashboardReport(report.id)
                 setReport(null)
+                setLightbox(null)
                 refresh()
               }}
             >

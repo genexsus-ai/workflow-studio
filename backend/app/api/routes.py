@@ -918,6 +918,22 @@ def get_dashboard_report(report_id: str) -> dict:
     return report
 
 
+@router.get("/analytics/reports/{report_id}/export")
+def export_dashboard_report(report_id: str) -> HTMLResponse:
+    """Self-contained HTML download: figures embedded, narrative rendered."""
+    from app.analytics_code import get_report_store, render_report_html
+
+    report = get_report_store().get(report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+    stamp = str(report.get("created_at", ""))[:10] or "report"
+    filename = f"dashboard_{stamp}_{report_id[:8]}.html"
+    return HTMLResponse(
+        content=render_report_html(report),
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.delete("/analytics/reports/{report_id}", status_code=204)
 def delete_dashboard_report(report_id: str) -> None:
     from app.analytics_code import get_report_store

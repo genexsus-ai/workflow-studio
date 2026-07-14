@@ -2333,6 +2333,66 @@ button.danger {
   font-size: 12px;
 }
 
+.figure-zoom {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: zoom-in;
+}
+
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.lightbox-body {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 14px;
+  max-width: 92vw;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lightbox-body img {
+  max-width: 88vw;
+  max-height: 80vh;
+  object-fit: contain;
+}
+
+.lightbox-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #475569;
+}
+
+.lightbox-bar button,
+.lightbox-bar a {
+  margin-left: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 6px;
+  padding: 2px 10px;
+  cursor: pointer;
+  color: #334155;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.lightbox-bar button:hover,
+.lightbox-bar a:hover {
+  background: #eef2f7;
+}
+
 .link-button {
   background: none;
   border: none;

@@ -407,3 +407,153 @@ async def run_dashboard_report(
     }
     get_report_store().save(report)
     return report
+
+
+# ------------------------------------------------------------- HTML export
+
+
+def _markdown_to_html(text: str) -> str:
+    """Our report-markdown subset -> HTML (headings, tables, lists, bold, code).
+
+    Mirrors the frontend Markdown component. Everything is escaped first,
+    so agent output can never inject markup into the exported file.
+    """
+    import html as html_lib
+
+    def inline(segment: str) -> str:
+        escaped = html_lib.escape(segment)
+        escaped = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", escaped)
+        return re.sub(r"`([^`]+)`", r"<code>\1</code>", escaped)
+
+    lines = text.splitlines()
+    parts: list[str] = []
+    index = 0
+    table_row = re.compile(r"^\s*\|.*\|\s*$")
+    list_item = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+")
+    separator = re.compile(r"^:?-{2,}:?$")
+
+    while index < len(lines):
+        line = lines[index]
+        if not line.strip():
+            index += 1
+            continue
+        heading = re.match(r"^(#{1,4})\s+(.*)", line)
+        if heading:
+            level = min(len(heading.group(1)) + 1, 5)
+            parts.append(f"<h{level}>{inline(heading.group(2))}</h{level}>")
+            index += 1
+            continue
+        if table_row.match(line):
+            rows: list[list[str]] = []
+            while index < len(lines) and table_row.match(lines[index]):
+                cells = [c.strip() for c in lines[index].strip().strip("|").split("|")]
+                if not all(separator.match(cell) for cell in cells):
+                    rows.append(cells)
+                index += 1
+            if rows:
+                head = "".join(f"<th>{inline(c)}</th>" for c in rows[0])
+                body = "".join(
+                    "<tr>" + "".join(f"<td>{inline(c)}</td>" for c in row) + "</tr>"
+                    for row in rows[1:]
+                )
+                parts.append(
+                    f"<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+                )
+            continue
+        if list_item.match(line):
+            items = []
+            while index < len(lines) and list_item.match(lines[index]):
+                items.append(f"<li>{inline(list_item.sub('', lines[index]))}</li>")
+                index += 1
+            parts.append("<ul>" + "".join(items) + "</ul>")
+            continue
+        paragraph = [line]
+        index += 1
+        while (
+            index < len(lines)
+            and lines[index].strip()
+            and not re.match(r"^#{1,4}\s", lines[index])
+            and not table_row.match(lines[index])
+            and not list_item.match(lines[index])
+        ):
+            paragraph.append(lines[index])
+            index += 1
+        parts.append(f"<p>{inline(' '.join(paragraph))}</p>")
+    return "\n".join(parts)
+
+
+def render_report_html(report: dict[str, Any]) -> str:
+    """Self-contained HTML dashboard: figures embedded as base64 PNGs."""
+    import base64
+    import html as html_lib
+
+    from genxai.core.files import get_file_store
+
+    store = get_file_store()
+    figure_tags = []
+    for figure in report.get("figures") or []:
+        try:
+            encoded = base64.b64encode(store.read_bytes(figure["id"])).decode()
+        except Exception as exc:
+            logger.warning("Export: figure %s unreadable: %s", figure.get("id"), exc)
+            continue
+        name = html_lib.escape(str(figure.get("name", "figure")))
+        figure_tags.append(
+            f'<figure><img src="data:image/png;base64,{encoded}" alt="{name}">'
+            f"<figcaption>{name}</figcaption></figure>"
+        )
+
+    plan_items = "".join(
+        f"<li><strong>{html_lib.escape(chart['name'].replace('_', ' '))}</strong>"
+        f" ({html_lib.escape(chart.get('kind', ''))}) — "
+        f"{html_lib.escape(chart.get('purpose', ''))}</li>"
+        for chart in report.get("plan") or []
+    )
+    title = html_lib.escape(
+        f"Dashboard — {report.get('source_name') or report.get('source', '')}"
+    )
+    focus = (
+        f"<p class='meta'>Focus: {html_lib.escape(report['focus'])}</p>"
+        if report.get("focus")
+        else ""
+    )
+    created = html_lib.escape(str(report.get("created_at", "")))
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<style>
+  body {{ font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; margin: 0;
+         background: #f8fafc; color: #334155; line-height: 1.55; }}
+  main {{ max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }}
+  h1 {{ color: #0f172a; font-size: 24px; }}
+  h2, h3 {{ color: #0f172a; margin: 22px 0 6px; }}
+  .meta {{ color: #64748b; font-size: 13px; margin: 2px 0; }}
+  .figures {{ display: flex; flex-wrap: wrap; gap: 16px; margin: 20px 0; }}
+  figure {{ margin: 0; background: #fff; border: 1px solid #e2e8f0;
+            border-radius: 10px; padding: 10px; }}
+  figure img {{ max-width: 430px; width: 100%; height: auto; display: block; }}
+  figcaption {{ font-size: 12px; color: #64748b; padding-top: 6px; }}
+  table {{ border-collapse: collapse; margin: 10px 0; font-size: 14px; }}
+  th, td {{ text-align: left; padding: 5px 14px 5px 0;
+            border-bottom: 1px solid #e2e8f0; }}
+  th {{ color: #64748b; }}
+  code {{ background: #eef2f7; border-radius: 4px; padding: 1px 4px; }}
+  ul {{ padding-left: 22px; }}
+</style>
+</head>
+<body>
+<main>
+<h1>{title}</h1>
+<p class="meta">Generated {created}</p>
+{focus}
+{'<h2>Charts</h2><div class="figures">' + ''.join(figure_tags) + '</div>' if figure_tags else ''}
+{'<h2>Chart plan</h2><ul>' + plan_items + '</ul>' if plan_items else ''}
+{_markdown_to_html(str(report.get('report') or ''))}
+</main>
+</body>
+</html>
+"""
