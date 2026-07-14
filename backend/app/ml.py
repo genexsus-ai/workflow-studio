@@ -191,67 +191,111 @@ def _load_frame(
     return features, X, y, kept
 
 
-def _diagnostic_figure(
+def _save_figure(fig: Any, filename: str) -> dict[str, Any]:
+    import matplotlib.pyplot as plt
+
+    fig.tight_layout()
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=120)
+    plt.close(fig)
+    return get_file_store().save_bytes(
+        buffer.getvalue(), name=filename, media_type="image/png"
+    )
+
+
+def _diagnostic_figures(
     name: str,
     estimator: Any,
     X_test: list[list[float]],
     y_test: list[Any],
     is_regression: bool,
-) -> dict[str, Any] | None:
-    """Holdout diagnostic PNG saved to the file store; None on any failure.
+) -> list[dict[str, Any]]:
+    """Holdout diagnostic PNGs saved to the file store.
 
-    Classification -> ROC curve (per class one-vs-rest when multiclass);
-    regression -> predicted vs. actual with the ideal y=x line. Diagnostics
-    are best-effort: a missing plot must never fail a training run.
+    Classification -> ROC curve (per class one-vs-rest when multiclass)
+    plus a confusion matrix; regression -> predicted vs. actual with the
+    ideal y=x line. Each plot is best-effort and independent: a missing
+    figure must never fail a training run.
     """
     try:
         import matplotlib
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+    except Exception as exc:  # pragma: no cover - matplotlib is pinned
+        logger.warning("Diagnostic figures for '%s' skipped: %s", name, exc)
+        return []
 
-        fig, ax = plt.subplots(figsize=(5, 4))
-        if is_regression:
+    figures: list[dict[str, Any]] = []
+
+    if is_regression:
+        try:
             predictions = estimator.predict(X_test)
             lo = min(min(y_test), float(min(predictions)))
             hi = max(max(y_test), float(max(predictions)))
+            fig, ax = plt.subplots(figsize=(5, 4))
             ax.scatter(y_test, predictions, s=14, alpha=0.7, edgecolors="none")
             ax.plot([lo, hi], [lo, hi], "k--", linewidth=0.8, label="ideal (y = x)")
             ax.set_xlabel("Actual")
             ax.set_ylabel("Predicted")
             ax.set_title("Predicted vs. actual (holdout)")
             ax.legend(loc="lower right", fontsize=8)
-            filename = f"{name}_predicted_vs_actual.png"
-        else:
-            from sklearn.metrics import auc, roc_curve
+            figures.append(_save_figure(fig, f"{name}_predicted_vs_actual.png"))
+        except Exception as exc:
+            logger.warning("Predicted-vs-actual figure for '%s' skipped: %s", name, exc)
+        return figures
 
-            proba = estimator.predict_proba(X_test)
-            classes = list(estimator.classes_)
-            curves = (
-                [(classes[1], proba[:, 1])]
-                if len(classes) == 2
-                else [(cls, proba[:, idx]) for idx, cls in enumerate(classes)]
-            )
-            for cls, scores in curves:
-                y_binary = [1 if value == cls else 0 for value in y_test]
-                fpr, tpr, _ = roc_curve(y_binary, scores)
-                ax.plot(fpr, tpr, label=f"{cls} (AUC = {auc(fpr, tpr):.3f})")
-            ax.plot([0, 1], [0, 1], "k--", linewidth=0.8, label="chance")
-            ax.set_xlabel("False positive rate")
-            ax.set_ylabel("True positive rate")
-            ax.set_title("ROC curve (holdout)")
-            ax.legend(loc="lower right", fontsize=8)
-            filename = f"{name}_roc_curve.png"
-        fig.tight_layout()
-        buffer = io.BytesIO()
-        fig.savefig(buffer, format="png", dpi=120)
-        plt.close(fig)
-        return get_file_store().save_bytes(
-            buffer.getvalue(), name=filename, media_type="image/png"
+    try:
+        from sklearn.metrics import auc, roc_curve
+
+        proba = estimator.predict_proba(X_test)
+        classes = list(estimator.classes_)
+        curves = (
+            [(classes[1], proba[:, 1])]
+            if len(classes) == 2
+            else [(cls, proba[:, idx]) for idx, cls in enumerate(classes)]
         )
+        fig, ax = plt.subplots(figsize=(5, 4))
+        for cls, scores in curves:
+            y_binary = [1 if value == cls else 0 for value in y_test]
+            fpr, tpr, _ = roc_curve(y_binary, scores)
+            ax.plot(fpr, tpr, label=f"{cls} (AUC = {auc(fpr, tpr):.3f})")
+        ax.plot([0, 1], [0, 1], "k--", linewidth=0.8, label="chance")
+        ax.set_xlabel("False positive rate")
+        ax.set_ylabel("True positive rate")
+        ax.set_title("ROC curve (holdout)")
+        ax.legend(loc="lower right", fontsize=8)
+        figures.append(_save_figure(fig, f"{name}_roc_curve.png"))
     except Exception as exc:
-        logger.warning("Diagnostic figure for '%s' skipped: %s", name, exc)
-        return None
+        logger.warning("ROC curve for '%s' skipped: %s", name, exc)
+
+    try:
+        from sklearn.metrics import confusion_matrix
+
+        predictions = estimator.predict(X_test)
+        classes = list(estimator.classes_)
+        matrix = confusion_matrix(y_test, predictions, labels=classes)
+        labels = [str(cls) for cls in classes]
+        fig, ax = plt.subplots(figsize=(4.6, 4))
+        image = ax.imshow(matrix, cmap="Blues")
+        fig.colorbar(image, ax=ax, fraction=0.046)
+        ax.set_xticks(range(len(labels)), labels, rotation=45, ha="right")
+        ax.set_yticks(range(len(labels)), labels)
+        threshold = matrix.max() / 2
+        for row in range(len(labels)):
+            for col in range(len(labels)):
+                ax.text(
+                    col, row, str(matrix[row][col]), ha="center", va="center",
+                    color="white" if matrix[row][col] > threshold else "black",
+                )
+        ax.set_xlabel("Predicted")
+        ax.set_ylabel("Actual")
+        ax.set_title("Confusion matrix (holdout)")
+        figures.append(_save_figure(fig, f"{name}_confusion_matrix.png"))
+    except Exception as exc:
+        logger.warning("Confusion matrix for '%s' skipped: %s", name, exc)
+
+    return figures
 
 
 def train_model(
@@ -360,10 +404,7 @@ def train_model(
         except Exception:
             pass
 
-    figures = []
-    diagnostic = _diagnostic_figure(name, estimator, X_test, y_test, is_regression)
-    if diagnostic:
-        figures.append(diagnostic)
+    figures = _diagnostic_figures(name, estimator, X_test, y_test, is_regression)
 
     buffer = io.BytesIO()
     joblib.dump({"estimator": estimator, "features": feature_names}, buffer)

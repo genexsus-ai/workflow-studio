@@ -920,7 +920,11 @@ function ModelsPanel() {
                 target="_blank"
                 rel="noreferrer"
               >
-                {figure.name.includes('roc') ? 'ROC curve' : 'diagnostic plot'}
+                {figure.name.includes('roc')
+                  ? 'ROC curve'
+                  : figure.name.includes('confusion')
+                    ? 'confusion matrix'
+                    : 'diagnostic plot'}
               </a>
             ))}
           </span>

@@ -87,12 +87,16 @@ def test_train_classifier(client):
         assert key in metrics, f"missing {key}: {metrics}"
         assert 0 <= metrics[key] <= 1
 
-    # ROC curve figure rendered, stored, and served
+    # ROC curve + confusion matrix rendered, stored, and served
     figures = trained["figures"]
-    assert len(figures) == 1 and "roc" in figures[0]["name"]
-    png = client.get(f"/api/v1/files/{figures[0]['id']}")
-    assert png.status_code == 200
-    assert png.content[:8].startswith(b"\x89PNG")
+    names = [figure["name"] for figure in figures]
+    assert len(figures) == 2, names
+    assert any("roc" in name for name in names)
+    assert any("confusion" in name for name in names)
+    for figure in figures:
+        png = client.get(f"/api/v1/files/{figure['id']}")
+        assert png.status_code == 200
+        assert png.content[:8].startswith(b"\x89PNG")
 
     # ...and it survives the registry round-trip
     listed = client.get("/api/v1/datascience/models").json()
