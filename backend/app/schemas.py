@@ -109,6 +109,11 @@ class DatasetAnalyzeRequest(BaseModel):
     verify: bool = True
 
 
+class CodeAnalysisRequest(BaseModel):
+    # What to compute / draw; the Python Coder Agent turns it into a script
+    request: str = Field(min_length=3)
+
+
 class SourceCreate(BaseModel):
     name: str
     kind: str  # "sql" | "file"

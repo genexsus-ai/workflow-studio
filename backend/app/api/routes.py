@@ -40,6 +40,7 @@ from app.schemas import (
     CellPatch,
     AutomationConfig,
     CredentialCreate,
+    CodeAnalysisRequest,
     DatasetAnalyzeRequest,
     ExperimentCreate,
     GateDecision,
@@ -880,6 +881,22 @@ async def analyze_source(source_id: str, payload: DatasetAnalyzeRequest) -> dict
     return await _analyze_rows(
         source["name"], sample, payload.question, payload.model, profile=profile
     )
+
+
+@router.post("/analytics/sources/{source_id}/code")
+async def code_analysis(source_id: str, payload: CodeAnalysisRequest) -> dict:
+    """Python Coder + Code Review agents: sandboxed pandas/matplotlib run."""
+    from app.analytics_code import run_code_analysis
+
+    _resolve_source_or_404(source_id)
+    try:
+        return await run_code_analysis(source_id, payload.request)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/analytics/sources/{source_id}/materialize", status_code=201)
