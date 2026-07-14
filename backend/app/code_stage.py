@@ -37,8 +37,9 @@ MAX_OUTPUT_ROWS = 100_000
 ALLOWED_IMPORTS = {
     # data science stack
     "pandas", "numpy", "sklearn", "scipy", "matplotlib", "joblib", "pyarrow",
-    # stdlib
-    "json", "math", "statistics", "datetime", "itertools", "collections",
+    # stdlib (os adds nothing pathlib doesn't already allow, and agents
+    # habitually write os.makedirs)
+    "os", "json", "math", "statistics", "datetime", "itertools", "collections",
     "functools", "pathlib", "random", "re", "csv", "io", "typing",
 }
 

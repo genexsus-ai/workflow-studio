@@ -352,19 +352,31 @@ async def review_artifact(
     from app.analyst import run_analyst
     from genxai.utils.structured import parse_json_loosely
 
+    if "code" in kind:
+        contract = (
+            "IMPORTANT: this is a Python CODE stage. It reads inputs from "
+            "./data/<alias>.parquet files (that is CORRECT — there is no SQL "
+            "table in code stages) and writes outputs to ./out/. Request "
+            "revision ONLY for real defects: certain crashes, nonexistent "
+            "columns, target leakage, or writing outside ./out.\n"
+        )
+    else:
+        contract = (
+            "IMPORTANT: the data is exposed as a table literally named `data` — "
+            "SQL referencing `data` is CORRECT; never ask for the source's "
+            "display name to appear in SQL.\n"
+            "Request revision ONLY for real defects: not read-only, referencing "
+            "nonexistent columns, target leakage, or destructive data loss "
+            "(dropping most rows, discarding the target).\n"
+        )
     prompt = (
         f"You are reviewing a {kind} artifact for this experiment plan:\n"
         f"{json.dumps(plan)}\n\n"
         f"Data context:\n{context[:2000]}\n\n"
         f"Artifact:\n{json.dumps(artifact, default=str)[:4000]}\n\n"
-        "IMPORTANT: the data is exposed as a table literally named `data` — "
-        "SQL referencing `data` is CORRECT; never ask for the source's "
-        "display name to appear in SQL.\n"
-        "Request revision ONLY for real defects: not read-only, referencing "
-        "nonexistent columns, target leakage, or destructive data loss "
-        "(dropping most rows, discarding the target). Do NOT demand extra "
-        "transformations, encodings, or stylistic changes — later stages "
-        "handle those. When in doubt, approve.\n"
+        + contract +
+        "Do NOT demand extra transformations, encodings, or stylistic "
+        "changes — later stages handle those. When in doubt, approve.\n"
         "Reply with ONLY JSON:\n"
         '{"verdict": "approve"|"revise", "reason": "<one sentence>"}'
     )
@@ -460,8 +472,9 @@ async def draft_visualization(
         f"Model results so far:\n{results_summary}\n{revise}\n"
         "Write a Python script (pandas + matplotlib, MPLBACKEND is Agg) that "
         "reads ./data/data.parquet and saves 1-3 insightful figures as PNG "
-        "files into ./out/figures/ (e.g. target distribution, top feature "
-        "relationships). Only use pandas/numpy/matplotlib. Reply with ONLY "
+        "files into ./out/figures/ (the directory ALREADY EXISTS — do not "
+        "create directories). E.g. target distribution, top feature "
+        "relationships. Only use pandas/numpy/matplotlib. Reply with ONLY "
         "the Python code, no fences, no prose."
     )
     result = await run_analyst(
@@ -725,6 +738,20 @@ async def _run_viz_stage(
 
     rows = _execute_sql("SELECT * FROM data", features_source)[1]
     result = await run_code_stage(code, {"data": rows})
+    if result["status"] != "ok" or not result.get("figures"):
+        # Self-repair: feed the failure back to the agent once
+        failure = result.get("error") or "no figures were produced in out/figures/"
+        code = await draft_visualization(
+            plan,
+            features_context,
+            results_summary,
+            feedback=(
+                f"Your code failed: {failure}. stdout tail: "
+                f"{result.get('stdout', '')[-500:]} — fix it. Remember: "
+                "./out/figures/ already exists, save PNGs there."
+            ),
+        )
+        result = await run_code_stage(code, {"data": rows})
     if result["status"] != "ok":
         raise RuntimeError(f"Visualization code failed: {result.get('error')}")
     if not result.get("figures"):

@@ -7,7 +7,7 @@ from app.code_stage import check_imports, run_code_stage
 
 def test_import_allowlist():
     assert check_imports("import pandas\nfrom sklearn.linear_model import X") == []
-    assert check_imports("import os\nimport requests") == ["os", "requests"]
+    assert check_imports("import os\nimport requests") == ["requests"]
 
 
 @pytest.mark.anyio
