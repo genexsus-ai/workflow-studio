@@ -1,0 +1,127 @@
+# Workflow Studio backend on k3s, exposed via Cloudflare Tunnel.
+#
+# Secrets are created imperatively (never committed):
+#   kubectl -n genxflowstudio create secret generic backend-env \
+#     --from-literal=PERSISTENCE_BACKEND=postgres \
+#     --from-literal=DATABASE_URL='postgresql+asyncpg://…' \
+#     --from-literal=OPENAI_API_KEY='…' \
+#     --from-literal=STUDIO_API_TOKEN='…' \
+#     --from-literal=PUBLIC_BASE_URL='https://api.genxflowstudio.com' \
+#     --from-literal=CORS_ORIGINS='https://genxflowstudio.com,https://www.genxflowstudio.com,http://localhost:5173'
+#   kubectl -n genxflowstudio create secret generic cloudflared-token \
+#     --from-literal=token='…'   # tunnel with api.genxflowstudio.com -> http://genxflowstudio-backend:8000
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: genxflowstudio
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: genxflowstudio-data
+  namespace: genxflowstudio
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: genxflowstudio-backend
+  namespace: genxflowstudio
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # single PVC (RWO): old pod must release it first
+  selector:
+    matchLabels:
+      app: genxflowstudio-backend
+  template:
+    metadata:
+      labels:
+        app: genxflowstudio-backend
+    spec:
+      # local-path PVC is node-local: keep the pod where the volume lives
+      nodeSelector:
+        kubernetes.io/hostname: irsal2009-hp-elitedesk-800-g3-dm-35w
+      containers:
+        - name: backend
+          image: docker.io/library/genxflowstudio-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: backend-env
+          volumeMounts:
+            - name: data
+              mountPath: /app/backend/data
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 1536Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: genxflowstudio-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: genxflowstudio-backend
+  namespace: genxflowstudio
+spec:
+  selector:
+    app: genxflowstudio-backend
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: genxflowstudio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:latest
+          args: ["tunnel", "--no-autoupdate", "run"]
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflared-token
+                  key: token
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
