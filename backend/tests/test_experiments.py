@@ -300,6 +300,33 @@ def test_full_pipeline_with_model_and_report(client, monkeypatch):
         assert label in report["report"], f"missing {label}"
 
 
+def test_report_markdown_normalizer():
+    from app.experiments import _normalize_report_markdown
+
+    # The failure mode seen in production: placeholder wrapper echoed
+    # back, sections as bold run-ins inside one giant paragraph.
+    raw = (
+        "<markdown: **Objective:** The objective was to predict churn. "
+        "**Model Performance in Business Terms:** Accuracy of **95.12%** "
+        "on the holdout set. **Next Steps:** Deploy the model.>"
+    )
+    out = _normalize_report_markdown(raw)
+    assert "<markdown" not in out and not out.endswith(">")
+    assert out.startswith("## Objective")
+    assert "## Model Performance in Business Terms" in out
+    assert "## Next Steps" in out
+    # Plain bold without a colon is content, not a heading
+    assert "**95.12%**" in out
+
+    # Well-formed markdown passes through untouched
+    good = "## Objective\nPredict churn.\n\n## Next steps\n- deploy"
+    assert _normalize_report_markdown(good) == good
+
+    # Code fences are stripped
+    fenced = "```markdown\n## Objective\nPredict churn.\n```"
+    assert _normalize_report_markdown(fenced).startswith("## Objective")
+
+
 def test_candidate_comparison_prefers_simpler_model(client, monkeypatch):
     from genxai.core.datasets import get_dataset_store
 

@@ -503,6 +503,32 @@ async def draft_visualization(
     return code.strip()
 
 
+def _normalize_report_markdown(text: str) -> str:
+    """Deterministic cleanup of narrator output into structured markdown.
+
+    LLMs sometimes echo placeholder syntax (``<markdown: ...>``) or emit a
+    single paragraph with ``**Section:**`` run-ins instead of headings.
+    Strip wrappers, then — only when no real headings exist — promote the
+    run-ins to ``## `` sections so the report always renders structured.
+    """
+    import re
+
+    cleaned = text.strip()
+    wrapped = re.match(r"^<\s*markdown:?\s*(.*)>\s*$", cleaned,
+                       re.IGNORECASE | re.DOTALL)
+    if wrapped:
+        cleaned = wrapped.group(1).strip()
+    cleaned = re.sub(r"^```(?:markdown|md)?\s*|```\s*$", "", cleaned)
+
+    if not re.search(r"^#{1,3} ", cleaned, re.MULTILINE):
+        cleaned = re.sub(
+            r"\s*\*\*([^*\n]{2,60}?):\*\*\s*|\s*\*\*([^*\n]{2,60}?)\*\*:\s*",
+            lambda m: f"\n\n## {m.group(1) or m.group(2)}\n\n",
+            cleaned,
+        ).strip()
+    return cleaned
+
+
 async def narrate_report(summary: dict[str, Any]) -> dict[str, str]:
     """Metric Performance Agent: the final verdict and report."""
     from app.analyst import run_analyst
@@ -510,11 +536,21 @@ async def narrate_report(summary: dict[str, Any]) -> dict[str, str]:
 
     prompt = (
         f"Experiment summary as JSON:\n{json.dumps(summary, default=str)[:9000]}\n\n"
-        "Write the final report. Reply with ONLY JSON:\n"
-        '{"recommendation": "ship"|"iterate"|"abandon",\n'
-        ' "report": "<markdown: objective, what the data showed, what was '
-        "cleaned/engineered, model performance in business terms (explain the "
-        'metrics), risks/caveats, and concrete next steps>"}'
+        "Write the final report as GitHub-flavored markdown with EXACTLY "
+        "these six '## ' sections, in this order, each holding 1-3 short "
+        "paragraphs or a bullet list:\n"
+        "## Objective\n"
+        "## What the data showed\n"
+        "## Data preparation\n"
+        "## Model performance\n"
+        "Explain the metrics in business terms here.\n"
+        "## Risks & caveats\n"
+        "## Next steps\n\n"
+        "Use real newlines between sections. Do NOT wrap the markdown in "
+        "any tag, fence, or angle brackets.\n"
+        "Reply with ONLY JSON:\n"
+        '{"recommendation": "ship"|"iterate"|"abandon", '
+        '"report": "## Objective\\n..."}'
     )
     result = await run_analyst(
         prompt,
@@ -527,7 +563,7 @@ async def narrate_report(summary: dict[str, Any]) -> dict[str, str]:
         raise ValueError(f"Report agent returned nothing: {result['output'][:200]}")
     return {
         "recommendation": str(parsed.get("recommendation", "iterate")),
-        "report": str(parsed["report"]),
+        "report": _normalize_report_markdown(str(parsed["report"])),
     }
 
 

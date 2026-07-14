@@ -34,6 +34,7 @@ import {
   type ModelInfo,
 } from '../api'
 import type { Analysis, AnalysisCell, AnalysisSummary, SourceSummary } from '../types'
+import Markdown from './Markdown'
 
 type CandidateRow = {
   model_type: string
@@ -715,7 +716,7 @@ function StageCard({ stage }: { stage: ExperimentStage }) {
                   : '🔁 iterate'}
             </strong>
           </p>
-          <pre className="analyze-result-pre">{String(artifact.report ?? '')}</pre>
+          <Markdown text={String(artifact.report ?? '')} />
         </>
       )}
 
