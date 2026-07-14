@@ -20,6 +20,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 DATASET = "example_sales"
+CHURN_DATASET = "example_churn"
 SOURCE_NAME = "Example: Revenue by region"
 ANALYSIS_NAME = "Example: Sales exploration"
 
@@ -51,10 +52,50 @@ def _demo_rows() -> list[dict]:
     return rows
 
 
+def _churn_rows(n: int = 400) -> list[dict]:
+    """Deterministic churn data with a learnable signal plus irreducible noise.
+
+    Churn is driven by low tenure, many support tickets, high charges, and
+    short contracts — with a noise term that is NOT a feature, so a good
+    classifier scores high but not a suspicious 100%.
+    """
+    rows = []
+    for i in range(n):
+        tenure_months = 1 + (i * 7) % 60
+        support_tickets = (i * 13) % 8
+        monthly_charges = 30 + (i * 11) % 90
+        contract_months = (0, 12, 24)[(i * 5) % 3]
+        usage_gb = 5 + (i * 3) % 80
+        plan = "basic" if monthly_charges < 60 else "plus" if monthly_charges < 95 else "premium"
+        noise = ((i * 17) % 13) - 6
+        score = (
+            40
+            - tenure_months * 0.9
+            + support_tickets * 7
+            + monthly_charges * 0.2
+            - contract_months * 1.0
+            + noise
+        )
+        rows.append(
+            {
+                "customer_id": f"C{i:04d}",
+                "tenure_months": tenure_months,
+                "monthly_charges": monthly_charges,
+                "support_tickets": support_tickets,
+                "contract_months": contract_months,
+                "usage_gb": usage_gb,
+                "plan": plan,
+                "churned": "yes" if score > 20 else "no",
+            }
+        )
+    return rows
+
+
 def seed_demo_data() -> None:
     """Idempotent, best-effort: never blocks startup."""
     try:
         _seed_dataset()
+        _seed_churn_dataset()
         _seed_federated_source()
         _seed_analysis()
     except Exception as exc:  # pragma: no cover - defensive
@@ -69,6 +110,22 @@ def _seed_dataset() -> None:
         return
     written = store.append(DATASET, _demo_rows())
     logger.info("Seeded dataset '%s' with %d rows", DATASET, written)
+
+
+def _seed_churn_dataset() -> None:
+    """Classification demo: train a churn model on this in Data Science.
+
+    Try: Models rail -> Train (source example_churn, target churned,
+    random forest classification), or an Experiment with objective
+    "Predict which customers will churn" and target "churned".
+    """
+    from genxai.core.datasets import get_dataset_store
+
+    store = get_dataset_store()
+    if store.rows(CHURN_DATASET, limit=1)["total"] > 0:
+        return
+    written = store.append(CHURN_DATASET, _churn_rows())
+    logger.info("Seeded dataset '%s' with %d rows", CHURN_DATASET, written)
 
 
 def _seed_federated_source() -> None:

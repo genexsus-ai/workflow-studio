@@ -52,3 +52,42 @@ def test_demo_seed_is_idempotent(client):
 
     analyses = client.get("/api/v1/datascience/analyses").json()
     assert sum(1 for a in analyses if a["name"] == ANALYSIS_NAME) == 1
+
+
+def test_churn_dataset_supports_model_development(client):
+    from app.demo_seed import CHURN_DATASET, seed_demo_data
+
+    seed_demo_data()
+
+    rows = client.get(f"/api/v1/data/sources/dataset:{CHURN_DATASET}/rows?limit=500").json()
+    assert rows["total"] == 400
+    labels = {row["churned"] for row in rows["rows"]}
+    assert labels == {"yes", "no"}  # both classes present
+    churn_rate = sum(1 for r in rows["rows"] if r["churned"] == "yes") / len(rows["rows"])
+    assert 0.15 < churn_rate < 0.85  # not degenerate
+
+    # A classifier actually learns the signal (noise keeps it below perfect)
+    trained = client.post(
+        "/api/v1/datascience/models/train",
+        json={
+            "name": "churn-demo",
+            "source": f"dataset:{CHURN_DATASET}",
+            "target": "churned",
+            "model_type": "random_forest_classification",
+        },
+    )
+    assert trained.status_code == 201, trained.text
+    metrics = trained.json()["metrics"]
+    assert metrics["accuracy"] >= 0.8
+    # numeric features auto-selected; ids and plan strings excluded
+    assert "tenure_months" in trained.json()["features"]
+    assert "customer_id" not in trained.json()["features"]
+
+    # Predictions materialize back into the catalog
+    predicted = client.post(
+        f"/api/v1/datascience/models/{trained.json()['id']}/predict",
+        json={"source": f"dataset:{CHURN_DATASET}", "dataset": "churn_scored"},
+    ).json()
+    assert predicted["written"] == 400
+    scored = client.get("/api/v1/datasets/churn_scored/rows?limit=2").json()
+    assert scored["rows"][0]["predicted_churned"] in ("yes", "no")
