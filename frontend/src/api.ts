@@ -28,6 +28,34 @@ const API_BASE: string =
   (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8000'
 const API = `${API_BASE}/api/v1`
 
+// ---- API token (X-Studio-Token) ------------------------------------------
+// Hosted backends require a token on every /api/v1 request. It is never
+// baked into the bundle: the user is prompted on the first 401 and the
+// value is kept in localStorage. Shadowing `fetch` at module scope routes
+// every request in this file through the token-injecting wrapper.
+const TOKEN_KEY = 'studio_api_token'
+
+async function fetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const headers = new Headers(init?.headers)
+  const stored = localStorage.getItem(TOKEN_KEY)
+  if (stored) headers.set('X-Studio-Token', stored)
+  let response = await window.fetch(input, { ...init, headers })
+  if (response.status === 401) {
+    const entered = window.prompt(
+      'This studio requires an API token (X-Studio-Token):',
+    )
+    if (entered && entered.trim()) {
+      localStorage.setItem(TOKEN_KEY, entered.trim())
+      headers.set('X-Studio-Token', entered.trim())
+      response = await window.fetch(input, { ...init, headers })
+    }
+  }
+  return response
+}
+
 async function json<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let detail = response.statusText
