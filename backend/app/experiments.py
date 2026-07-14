@@ -357,10 +357,15 @@ async def review_artifact(
         f"{json.dumps(plan)}\n\n"
         f"Data context:\n{context[:2000]}\n\n"
         f"Artifact:\n{json.dumps(artifact, default=str)[:4000]}\n\n"
-        "Check: does the SQL match the stated intent; is it read-only; does "
-        "it reference only table `data` and real columns; any target "
-        "leakage or data loss risks (dropping too many rows, discarding the "
-        "target)? Reply with ONLY JSON:\n"
+        "IMPORTANT: the data is exposed as a table literally named `data` — "
+        "SQL referencing `data` is CORRECT; never ask for the source's "
+        "display name to appear in SQL.\n"
+        "Request revision ONLY for real defects: not read-only, referencing "
+        "nonexistent columns, target leakage, or destructive data loss "
+        "(dropping most rows, discarding the target). Do NOT demand extra "
+        "transformations, encodings, or stylistic changes — later stages "
+        "handle those. When in doubt, approve.\n"
+        "Reply with ONLY JSON:\n"
         '{"verdict": "approve"|"revise", "reason": "<one sentence>"}'
     )
     result = await run_analyst(
@@ -513,7 +518,8 @@ def _sources_context(source_id: str) -> str:
     adapter = get_adapter(source)
     profile = profile_source(adapter)
     return (
-        f"Source: {source['name']} ({profile['total_rows']} rows)\n"
+        f"Table `data` — the ONLY table name usable in SQL. It exposes the "
+        f"source '{source['name']}' ({profile['total_rows']} rows).\n"
         f"Columns: {json.dumps(adapter.schema())}\n"
         f"Column statistics: {json.dumps(profile['columns'], default=str)[:2500]}"
     )
@@ -792,6 +798,7 @@ async def run_experiment(experiment_id: str) -> None:
         store.save(experiment)
         feedback: str | None = None
         last_error: str | None = None
+        review_rounds = 0
         for _attempt in range(MAX_SQL_ATTEMPTS):
             draft = await draft_cleaning(
                 plan, context, exploration_summary, feedback
@@ -799,9 +806,20 @@ async def run_experiment(experiment_id: str) -> None:
             review = await review_artifact("cleaning SQL", draft, plan, context)
             stage["verdicts"].append(review)
             if review["verdict"] == "revise":
-                feedback = review["reason"]
-                last_error = f"reviewer requested revision: {review['reason']}"
-                continue
+                review_rounds += 1
+                if review_rounds <= MAX_REVIEW_ROUNDS:
+                    feedback = review["reason"]
+                    last_error = f"reviewer requested revision: {review['reason']}"
+                    continue
+                # Review budget exhausted: proceed if the SQL actually runs,
+                # recording the reservation instead of failing the experiment
+                stage["verdicts"].append(
+                    {
+                        "verdict": "override",
+                        "reason": "review rounds exhausted; proceeding because "
+                        "the SQL validates and executes",
+                    }
+                )
             try:
                 columns, rows = _execute_sql(draft["sql"], experiment["source_id"])
             except Exception as exc:
@@ -854,14 +872,24 @@ async def run_experiment(experiment_id: str) -> None:
         store.save(experiment)
         feedback = None
         last_error = None
+        review_rounds = 0
         for _attempt in range(MAX_SQL_ATTEMPTS):
             draft = await draft_features(plan, clean_context, feedback)
             review = await review_artifact("feature SQL", draft, plan, clean_context)
             stage["verdicts"].append(review)
             if review["verdict"] == "revise":
-                feedback = review["reason"]
-                last_error = f"reviewer requested revision: {review['reason']}"
-                continue
+                review_rounds += 1
+                if review_rounds <= MAX_REVIEW_ROUNDS:
+                    feedback = review["reason"]
+                    last_error = f"reviewer requested revision: {review['reason']}"
+                    continue
+                stage["verdicts"].append(
+                    {
+                        "verdict": "override",
+                        "reason": "review rounds exhausted; proceeding because "
+                        "the SQL validates and executes",
+                    }
+                )
             try:
                 columns, rows = _execute_sql(draft["sql"], clean_source)
             except Exception as exc:

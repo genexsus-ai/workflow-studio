@@ -420,3 +420,34 @@ def test_export_is_a_runnable_project(client, monkeypatch):
     assert "exportable" in readme and "Final report" in readme
     # The bundled sample parquet is genuine
     assert bundle.read("data/source_sample.parquet")[:4] == b"PAR1"
+
+
+def test_stubborn_reviewer_cannot_deadlock_valid_sql(client, monkeypatch):
+    """Regression: reviewer kept rejecting correct alias-based SQL and burned
+    all attempts. After MAX_REVIEW_ROUNDS, executable SQL proceeds with the
+    reservation recorded as an override verdict."""
+    import app.experiments as exp
+
+    _seed_orders()
+    _stub_crew(monkeypatch)
+
+    async def always_reject(kind, artifact, plan, context):
+        return {
+            "verdict": "revise",
+            "reason": "The SQL references a table named 'data' but the source is 'orders'",
+        }
+
+    monkeypatch.setattr(exp, "review_artifact", always_reject)
+
+    created = client.post(
+        "/api/v1/datascience/experiments",
+        json={"objective": "x", "source": "dataset:orders"},
+    ).json()
+    experiment = _wait_done(client, created["id"])
+
+    assert experiment["status"] == "ok", experiment.get("error")
+    clean_stage = next(s for s in experiment["stages"] if s["name"] == "clean")
+    verdicts = [v["verdict"] for v in clean_stage["verdicts"]]
+    assert verdicts.count("revise") >= 3  # two review rounds + the final one
+    assert "override" in verdicts
+    assert clean_stage["artifact"]["dataset"].endswith("_clean")
