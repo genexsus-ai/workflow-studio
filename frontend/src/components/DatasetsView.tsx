@@ -1042,10 +1042,19 @@ function MaterializeSection({ source }: { source: SourceSummary }) {
   )
 }
 
+interface Verification {
+  claim: string
+  sql: string
+  result?: unknown
+  verdict: string
+  note?: string
+}
+
 function AnalyzeSection({ sourceId }: { sourceId: string }) {
   const [question, setQuestion] = useState('')
   const [busy, setBusy] = useState(false)
   const [insight, setInsight] = useState<string | null>(null)
+  const [verifications, setVerifications] = useState<Verification[]>([])
   const [meta, setMeta] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -1055,10 +1064,14 @@ function AnalyzeSection({ sourceId }: { sourceId: string }) {
     try {
       const result = await analyzeSource(sourceId, question || undefined)
       setInsight(result.insight)
+      setVerifications(
+        ((result as unknown as { verifications?: Verification[] }).verifications) ?? [],
+      )
       setMeta(`${result.model} · analyzed ${result.sampled_rows} of ${result.total_rows} rows`)
     } catch (err) {
       setError((err as Error).message)
       setInsight(null)
+      setVerifications([])
     } finally {
       setBusy(false)
     }
@@ -1082,7 +1095,36 @@ function AnalyzeSection({ sourceId }: { sourceId: string }) {
       {insight && (
         <div className="analyze-result">
           <pre>{insight}</pre>
-          {meta && <p className="config-subtitle">{meta}</p>}
+          {verifications.length > 0 && (
+            <div className="verification-list">
+              {verifications.map((verification, index) => (
+                <details key={index} className="output-paths">
+                  <summary>
+                    {verification.verdict === 'confirmed'
+                      ? '✅'
+                      : verification.verdict === 'corrected'
+                        ? '✏️'
+                        : '❓'}{' '}
+                    {verification.claim}
+                    {verification.note ? ` — ${verification.note}` : ''}
+                  </summary>
+                  <pre className="cell-sql">{verification.sql}</pre>
+                  {verification.result != null && (
+                    <pre className="cell-sql">
+                      {JSON.stringify(verification.result, null, 1)}
+                    </pre>
+                  )}
+                </details>
+              ))}
+            </div>
+          )}
+          {meta && (
+            <p className="config-subtitle">
+              {meta}
+              {verifications.length > 0 &&
+                ` · ${verifications.filter((v) => v.verdict === 'confirmed').length}/${verifications.length} claims verified by query`}
+            </p>
+          )}
         </div>
       )}
     </section>

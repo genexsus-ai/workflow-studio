@@ -857,6 +857,26 @@ async def analyze_source(source_id: str, payload: DatasetAnalyzeRequest) -> dict
         profile = profile_source(adapter)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if sample["total"] == 0 or not sample["rows"]:
+        raise HTTPException(status_code=404, detail="Source is empty or missing")
+
+    if payload.verify:
+        from app.insight_crew import analyze_with_verification
+
+        try:
+            result = await analyze_with_verification(
+                source, sample, profile, payload.question, payload.model
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "dataset": source["name"],
+            "model": result["model"],
+            "sampled_rows": len(sample["rows"]),
+            "total_rows": sample["total"],
+            "insight": result["insight"],
+            "verifications": result["verifications"],
+        }
     return await _analyze_rows(
         source["name"], sample, payload.question, payload.model, profile=profile
     )

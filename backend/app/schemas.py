@@ -105,6 +105,8 @@ class HumanInputResponse(BaseModel):
 class DatasetAnalyzeRequest(BaseModel):
     question: str | None = None
     model: str | None = None
+    # Run the verification crew (Fact-Checker + Judge) over the insight
+    verify: bool = True
 
 
 class SourceCreate(BaseModel):
