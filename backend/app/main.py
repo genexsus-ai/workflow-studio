@@ -1,7 +1,6 @@
 """GenXAI Workflow Studio backend."""
 
 import logging
-import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -16,14 +15,19 @@ logging.basicConfig(level=logging.INFO)
 
 
 def seed_examples(data_dir: Path) -> None:
-    """Copy bundled example workflows that aren't in the store yet."""
-    workflows_dir = data_dir / "workflows"
-    workflows_dir.mkdir(parents=True, exist_ok=True)
+    """Add bundled example workflows that aren't in the store yet."""
+    from app.api.routes import get_store
+    from app.schemas import WorkflowDoc
+
+    store = get_store()
     seed_dir = BACKEND_ROOT / "seed"
     for example in seed_dir.glob("*.json"):
-        target = workflows_dir / example.name
-        if not target.exists():
-            shutil.copy(example, target)
+        try:
+            doc = WorkflowDoc.model_validate_json(example.read_text())
+        except Exception:
+            continue
+        if doc.id and store.get(doc.id) is None:
+            store.create(doc)
 
 
 @asynccontextmanager

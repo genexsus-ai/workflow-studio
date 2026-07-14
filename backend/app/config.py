@@ -28,6 +28,27 @@ class Settings(BaseSettings):
 
     data_dir: Path = BACKEND_ROOT / "data"
 
+    # Persistence: "files" keeps workflows/runs as JSON under data_dir;
+    # "postgres" stores them in the database named by database_url.
+    persistence_backend: str = "files"
+    database_url: str | None = None
+
+    @property
+    def sync_database_url(self) -> str | None:
+        """database_url normalized for sync SQLAlchemy (psycopg2).
+
+        The .env URL may name the asyncpg driver and its ``ssl=`` query
+        parameter; the backend uses sync engines, so translate both.
+        """
+        if not self.database_url:
+            return None
+        url = self.database_url.replace("+asyncpg", "+psycopg2")
+        return url.replace("ssl=", "sslmode=") if "+psycopg2" in url else url
+
+    @property
+    def use_db_persistence(self) -> bool:
+        return self.persistence_backend.lower() == "postgres" and bool(self.database_url)
+
 
 @lru_cache
 def get_settings() -> Settings:

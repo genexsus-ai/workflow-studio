@@ -23,9 +23,20 @@ def get_execution_store() -> ExecutionStore:
     global _execution_store
     if _execution_store is None:
         settings = get_settings()
-        runs_dir = settings.data_dir / "runs"
-        runs_dir.mkdir(parents=True, exist_ok=True)
-        _execution_store = ExecutionStore(persistence_path=runs_dir)
+        if settings.use_db_persistence:
+            from app.exec_store import StudioExecutionStore
+
+            try:
+                _execution_store = StudioExecutionStore(settings.sync_database_url)
+            except Exception:
+                logger.exception(
+                    "PERSISTENCE_BACKEND=postgres but the database is "
+                    "unreachable — falling back to file persistence for runs"
+                )
+        if _execution_store is None:
+            runs_dir = settings.data_dir / "runs"
+            runs_dir.mkdir(parents=True, exist_ok=True)
+            _execution_store = ExecutionStore(persistence_path=runs_dir)
     return _execution_store
 
 

@@ -1,6 +1,7 @@
 """REST + SSE routes for the Workflow Studio."""
 
 import json
+import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile
@@ -60,19 +61,31 @@ from app.schemas import (
     WorkflowDoc,
     WorkflowSummary,
 )
+from app.db_store import DbWorkflowStore
 from app.store import WorkflowStore
 from app.yaml_import import parse_workflow_yaml
 
 router = APIRouter()
 
-_store: WorkflowStore | None = None
+_store: WorkflowStore | DbWorkflowStore | None = None
 _schedule_manager: ScheduleManager | None = None
 
 
-def get_store() -> WorkflowStore:
+def get_store() -> WorkflowStore | DbWorkflowStore:
     global _store
     if _store is None:
-        _store = WorkflowStore(get_settings().data_dir)
+        settings = get_settings()
+        if settings.use_db_persistence:
+            try:
+                _store = DbWorkflowStore(settings.sync_database_url)
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "PERSISTENCE_BACKEND=postgres but the database is "
+                    "unreachable — falling back to file persistence"
+                )
+                _store = WorkflowStore(settings.data_dir)
+        else:
+            _store = WorkflowStore(settings.data_dir)
     return _store
 
 
