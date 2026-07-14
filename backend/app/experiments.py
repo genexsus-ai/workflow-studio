@@ -34,6 +34,15 @@ logger = logging.getLogger(__name__)
 
 MAX_REVIEW_ROUNDS = 2
 MAX_SQL_ATTEMPTS = 3
+
+# Candidate selection tiebreak: when CV means are within one std of the
+# best, the model with the lower rank here wins (interpretable > ensemble).
+_MODEL_SIMPLICITY = {
+    "linear_regression": 0,
+    "logistic_regression": 0,
+    "random_forest_regression": 1,
+    "random_forest_classification": 1,
+}
 EXPLORE_RESULT_ROWS = 20
 STAGE_NAMES = ("plan", "explore", "clean", "features", "model", "viz", "report")
 
@@ -438,10 +447,13 @@ async def draft_model_plan(
         f"`data` conceptually):\n{features_context}\n{revise}\n"
         "Choose the modeling approach. Prefer approach \"spec\" (built-in "
         "primitives) unless the problem genuinely needs a custom pipeline.\n"
+        "For \"spec\", propose 2-3 CANDIDATE model families suited to the "
+        "task — the platform cross-validates every candidate and picks the "
+        "best (preferring the simpler model on a statistical tie).\n"
         "Reply with ONLY JSON, one of:\n"
-        '{"approach": "spec", "model_type": "linear_regression"|"logistic_regression"|'
-        '"random_forest_regression"|"random_forest_classification", '
-        '"features": [<columns>] or null, "rationale": "<why>"}\n'
+        '{"approach": "spec", "candidates": ["linear_regression"|"logistic_regression"|'
+        '"random_forest_regression"|"random_forest_classification", ...], '
+        '"features": [<columns>] or null, "rationale": "<why these candidates>"}\n'
         'or {"approach": "code", "code": "<python: read ./data/data.parquet with pandas, '
         "train sklearn, save ./out/model.joblib and ./out/metrics.json>\", "
         '"rationale": "<why>"}'
@@ -646,7 +658,21 @@ async def _run_model_stage(
         }
         return {"approach": "code", "metrics": metrics}
 
-    model_type = str(proposal.get("model_type") or "")
+    # Candidates: the agent proposes 2-3 model families; a bare model_type
+    # (old contract) still works. Invalid names are dropped, not fatal —
+    # unless nothing valid remains.
+    raw_candidates = proposal.get("candidates") or (
+        [proposal["model_type"]] if proposal.get("model_type") else []
+    )
+    candidates = list(dict.fromkeys(
+        str(c) for c in raw_candidates if str(c) in ml.MODEL_TYPES
+    ))[:3]
+    if not candidates:
+        raise RuntimeError(
+            f"Model agent proposed no valid model type: {raw_candidates!r} "
+            f"(valid: {', '.join(sorted(ml.MODEL_TYPES))})"
+        )
+    model_type = candidates[0]
     features = proposal.get("features") or None
 
     # Feature selection: rank by forest importance, propose a pruned set,
@@ -679,6 +705,49 @@ async def _run_model_stage(
         feature_selection = {"importances": importances, "dropped": [],
                              "kept_selected_set": False}
 
+    # Cross-validate every candidate on the chosen feature set and pick the
+    # winner: best CV mean, but within one std of the best the SIMPLER
+    # model wins (linear/logistic beat forests).
+    comparison = [{"model_type": model_type, "cv": cv}]
+    for candidate in candidates[1:]:
+        comparison.append({
+            "model_type": candidate,
+            "cv": ml.cross_validate_spec(
+                features_source, target, candidate, chosen_features
+            ),
+        })
+    best = max(comparison, key=lambda entry: entry["cv"]["mean"])
+    threshold = best["cv"]["mean"] - best["cv"]["std"]
+    winner = min(
+        (e for e in comparison if e["cv"]["mean"] >= threshold),
+        key=lambda e: (_MODEL_SIMPLICITY.get(e["model_type"], 2),
+                       -e["cv"]["mean"]),
+    )
+    model_type = winner["model_type"]
+    cv = winner["cv"]
+    candidate_table = [
+        {
+            "model_type": entry["model_type"],
+            "cv_mean": entry["cv"]["mean"],
+            "cv_std": entry["cv"]["std"],
+            "overfit_warning": entry["cv"]["overfit_warning"],
+            "chosen": entry is winner,
+        }
+        for entry in comparison
+    ]
+    scores = ", ".join(
+        f"{e['model_type']}={e['cv']['mean']}" for e in comparison
+    )
+    if len(comparison) == 1:
+        selection_note = f"single candidate: {model_type}"
+    elif winner is best:
+        selection_note = f"{model_type} won on CV mean ({scores})"
+    else:
+        selection_note = (
+            f"{model_type} chosen: within one std of the best "
+            f"({scores}) — simpler model preferred"
+        )
+
     model_name = f"exp_{experiment['id'][:8]}_model"
     trained = ml.train_model(
         model_name, features_source, target, model_type, chosen_features
@@ -691,6 +760,8 @@ async def _run_model_stage(
         "rationale": proposal.get("rationale"),
         "model_type": model_type,
         "model_name": model_name,
+        "candidates": candidate_table,
+        "selection_note": selection_note,
         "feature_selection": feature_selection,
         "features_used": chosen_features,
         "cross_validation": cv,
@@ -700,6 +771,8 @@ async def _run_model_stage(
     return {
         "approach": "spec",
         "model_type": model_type,
+        "candidates": candidate_table,
+        "selection_note": selection_note,
         "features_used": chosen_features,
         "cv": cv,
         "holdout": trained["metrics"],

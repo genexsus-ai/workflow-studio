@@ -289,6 +289,99 @@ def test_full_pipeline_with_model_and_report(client, monkeypatch):
     assert calls["report"] == 1
 
 
+def test_candidate_comparison_prefers_simpler_model(client, monkeypatch):
+    from genxai.core.datasets import get_dataset_store
+
+    # Perfectly linear data: the forest can't beat linear regression, so
+    # the simplicity tiebreak must pick linear even though the agent
+    # listed the forest first.
+    get_dataset_store().append(
+        "points_cmp", [{"x": i, "y": 2 * i + 1} for i in range(60)]
+    )
+    _stub_crew(monkeypatch)
+
+    import app.experiments as exp
+
+    async def regression_plan(objective, target, context):
+        return {"task_type": "regression", "target": "y",
+                "exploration_focus": "shape", "cleaning_focus": "none"}
+
+    async def passthrough(plan, context, *args, feedback=None):
+        return {"intent": "no-op", "sql": "SELECT * FROM data"}
+
+    async def multi_candidate_plan(plan, features_context, feedback=None):
+        return {"approach": "spec",
+                "candidates": ["random_forest_regression", "linear_regression"],
+                "features": None, "rationale": "compare forest vs linear"}
+
+    monkeypatch.setattr(exp, "plan_stage", regression_plan)
+    monkeypatch.setattr(exp, "draft_cleaning", passthrough)
+    monkeypatch.setattr(exp, "draft_features", passthrough)
+    monkeypatch.setattr(exp, "draft_model_plan", multi_candidate_plan)
+
+    created = client.post(
+        "/api/v1/datascience/experiments",
+        json={"objective": "Predict y", "source": "dataset:points_cmp",
+              "target": "y"},
+    ).json()
+    experiment = _wait_done(client, created["id"])
+
+    assert experiment["status"] == "ok", experiment.get("error")
+    model = next(
+        s for s in experiment["stages"] if s["name"] == "model"
+    )["artifact"]
+
+    # Both candidates were cross-validated and recorded
+    table = model["candidates"]
+    assert {entry["model_type"] for entry in table} == {
+        "random_forest_regression", "linear_regression"
+    }
+    assert all("cv_mean" in entry and "cv_std" in entry for entry in table)
+
+    # Linear wins (best mean, and simpler on any tie) and was trained
+    chosen = [entry for entry in table if entry["chosen"]]
+    assert len(chosen) == 1
+    assert chosen[0]["model_type"] == "linear_regression"
+    assert model["model_type"] == "linear_regression"
+    assert model["selection_note"]
+    assert model["cross_validation"]["mean"] > 0.99
+
+
+def test_invalid_candidates_fail_clearly(client, monkeypatch):
+    _seed_orders(
+        [{"x": i, "y": 3 * i} for i in range(30)]
+    )
+    _stub_crew(monkeypatch)
+
+    import app.experiments as exp
+
+    async def regression_plan(objective, target, context):
+        return {"task_type": "regression", "target": "y",
+                "exploration_focus": "shape", "cleaning_focus": "none"}
+
+    async def passthrough(plan, context, *args, feedback=None):
+        return {"intent": "no-op", "sql": "SELECT * FROM data"}
+
+    async def bogus_plan(plan, features_context, feedback=None):
+        return {"approach": "spec", "candidates": ["xgboost", "catboost"],
+                "rationale": "models we do not have"}
+
+    monkeypatch.setattr(exp, "plan_stage", regression_plan)
+    monkeypatch.setattr(exp, "draft_cleaning", passthrough)
+    monkeypatch.setattr(exp, "draft_features", passthrough)
+    monkeypatch.setattr(exp, "draft_model_plan", bogus_plan)
+
+    created = client.post(
+        "/api/v1/datascience/experiments",
+        json={"objective": "Predict y", "source": "dataset:orders",
+              "target": "y"},
+    ).json()
+    experiment = _wait_done(client, created["id"])
+
+    assert experiment["status"] == "error"
+    assert "no valid model type" in experiment["error"]
+
+
 # ------------------------------------------------------------------------ P3
 
 

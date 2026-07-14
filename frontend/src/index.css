@@ -2263,6 +2263,35 @@ button.danger {
   margin-top: 6px;
 }
 
+.candidate-table {
+  margin: 6px 0;
+}
+
+.candidate-table table {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+  max-width: 460px;
+}
+
+.candidate-table th,
+.candidate-table td {
+  text-align: left;
+  padding: 3px 10px 3px 0;
+  border-bottom: 1px solid #e2e8f0;
+  color: #475569;
+}
+
+.candidate-table th {
+  font-weight: 600;
+  color: #64748b;
+}
+
+.candidate-table tr.chosen td {
+  color: #166534;
+  font-weight: 600;
+}
+
 .figure-row {
   display: flex;
   gap: 10px;

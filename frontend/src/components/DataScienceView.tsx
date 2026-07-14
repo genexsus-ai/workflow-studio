@@ -35,6 +35,14 @@ import {
 } from '../api'
 import type { Analysis, AnalysisCell, AnalysisSummary, SourceSummary } from '../types'
 
+type CandidateRow = {
+  model_type: string
+  cv_mean: number
+  cv_std: number
+  overfit_warning?: boolean
+  chosen?: boolean
+}
+
 function sanitizeAlias(name: string): string {
   const alias = name.toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')
   return /^[a-z_]/.test(alias) ? alias : `s_${alias}`
@@ -580,6 +588,31 @@ function StageCard({ stage }: { stage: ExperimentStage }) {
               <strong>{String(artifact.model_type ?? artifact.approach ?? '')}</strong>
               {artifact.rationale ? ` — ${String(artifact.rationale)}` : ''}
             </p>
+            {((artifact.candidates as CandidateRow[] | undefined) ?? []).length > 1 && (
+              <div className="candidate-table">
+                <table>
+                  <thead>
+                    <tr><th>Candidate</th><th>CV mean</th><th>± std</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {(artifact.candidates as CandidateRow[]).map((row) => (
+                      <tr key={row.model_type} className={row.chosen ? 'chosen' : ''}>
+                        <td>{row.model_type.replace(/_/g, ' ')}</td>
+                        <td>{row.cv_mean}</td>
+                        <td>{row.cv_std}</td>
+                        <td>
+                          {row.chosen ? '✓ chosen' : ''}
+                          {row.overfit_warning ? ' ⚠' : ''}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {Boolean(artifact.selection_note) && (
+                  <p className="config-subtitle">{String(artifact.selection_note)}</p>
+                )}
+              </div>
+            )}
             {Boolean(artifact.feature_selection) && (
               <p className="config-subtitle">
                 Features:{' '}
