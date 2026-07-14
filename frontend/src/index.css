@@ -2252,3 +2252,13 @@ button.danger {
   font-size: 12px;
   color: #94a3b8;
 }
+
+.ds-mode-tabs {
+  margin-bottom: 10px;
+}
+
+.explore-query {
+  border-top: 1px solid #f1f5f9;
+  padding-top: 6px;
+  margin-top: 6px;
+}

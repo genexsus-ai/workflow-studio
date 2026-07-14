@@ -56,6 +56,10 @@ def client(tmp_path, monkeypatch):
 
     ml.reset_model_registry()
 
+    import app.experiments as experiments
+
+    experiments.reset_experiment_store()
+
     import app.mcp_registry as mcp_registry
 
     monkeypatch.setattr(mcp_registry, "_store", None)

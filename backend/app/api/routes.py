@@ -41,6 +41,7 @@ from app.schemas import (
     AutomationConfig,
     CredentialCreate,
     DatasetAnalyzeRequest,
+    ExperimentCreate,
     GenerateRequest,
     HumanInputResponse,
     MaterializeRequest,
@@ -1659,3 +1660,71 @@ def delete_model(model_id: str) -> None:
 
     if not get_model_registry().delete(model_id):
         raise HTTPException(status_code=404, detail="Model not found")
+
+
+# ---------------------------------------------------------------- experiments
+
+
+@router.post("/datascience/experiments", status_code=201)
+async def create_experiment(payload: ExperimentCreate) -> dict:
+    """Start a multi-agent experiment (plan -> explore -> clean in v2-P1)."""
+    from app.data_catalog import resolve_source
+    from app.experiments import get_experiment_store, start_experiment
+
+    objective = payload.objective.strip()
+    if not objective:
+        raise HTTPException(status_code=422, detail="objective required")
+    if resolve_source(payload.source) is None:
+        raise HTTPException(
+            status_code=404, detail=f"Source '{payload.source}' not found"
+        )
+    experiment = get_experiment_store().create(
+        objective, payload.source, (payload.target or "").strip() or None
+    )
+    start_experiment(experiment["id"])
+    return experiment
+
+
+@router.get("/datascience/experiments")
+def list_experiments() -> list[dict]:
+    from app.experiments import get_experiment_store
+
+    return get_experiment_store().list()
+
+
+@router.get("/datascience/experiments/{experiment_id}")
+def get_experiment(experiment_id: str) -> dict:
+    from app.experiments import get_experiment_store
+
+    experiment = get_experiment_store().get(experiment_id)
+    if experiment is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    return experiment
+
+
+@router.post("/datascience/experiments/{experiment_id}/rerun", status_code=202)
+async def rerun_experiment(experiment_id: str) -> dict:
+    from app.experiments import get_experiment_store, start_experiment
+
+    store = get_experiment_store()
+    experiment = store.get(experiment_id)
+    if experiment is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    if experiment["status"] == "running":
+        raise HTTPException(status_code=409, detail="Experiment is already running")
+    # Fresh pipeline over current data: reset stages, keep the objective
+    experiment["status"] = "queued"
+    experiment["error"] = None
+    for stage in experiment["stages"]:
+        stage.update(status="pending", artifact=None, verdicts=[], error=None)
+    store.save(experiment)
+    start_experiment(experiment_id)
+    return {"status": "accepted", "experiment_id": experiment_id}
+
+
+@router.delete("/datascience/experiments/{experiment_id}", status_code=204)
+def delete_experiment(experiment_id: str) -> None:
+    from app.experiments import get_experiment_store
+
+    if not get_experiment_store().delete(experiment_id):
+        raise HTTPException(status_code=404, detail="Experiment not found")

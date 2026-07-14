@@ -538,3 +538,55 @@ export const scheduleReport = (
       slack_channel: slackChannel || null,
     }),
   }).then((r) => json<{ workflow_id: string; workflow_name: string }>(r))
+
+export interface ExperimentStage {
+  name: string
+  status: string
+  artifact?: Record<string, unknown> | null
+  verdicts: { verdict: string; reason: string }[]
+  error?: string | null
+}
+
+export interface ExperimentSummary {
+  id: string
+  objective: string
+  source_id: string
+  target?: string | null
+  status: string
+  error?: string | null
+  stages_done: number
+  stages_total: number
+  created_at: string
+  updated_at: string
+}
+
+export interface Experiment {
+  id: string
+  objective: string
+  source_id: string
+  target?: string | null
+  status: string
+  error?: string | null
+  stages: ExperimentStage[]
+  created_at: string
+  updated_at: string
+}
+
+export const listExperiments = () =>
+  fetch(`${API}/datascience/experiments`).then((r) => json<ExperimentSummary[]>(r))
+
+export const createExperiment = (objective: string, source: string, target?: string) =>
+  fetch(`${API}/datascience/experiments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ objective, source, target: target || null }),
+  }).then((r) => json<Experiment>(r))
+
+export const getExperiment = (id: string) =>
+  fetch(`${API}/datascience/experiments/${id}`).then((r) => json<Experiment>(r))
+
+export const rerunExperiment = (id: string) =>
+  fetch(`${API}/datascience/experiments/${id}/rerun`, { method: 'POST' })
+
+export const deleteExperiment = (id: string) =>
+  fetch(`${API}/datascience/experiments/${id}`, { method: 'DELETE' })

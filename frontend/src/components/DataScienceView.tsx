@@ -4,20 +4,28 @@ import {
   addAnalysisCell,
   addManualCell,
   createAnalysis,
+  createExperiment,
   deleteAnalysis,
   deleteAnalysisCell,
+  deleteExperiment,
   deleteModel,
   getAnalysis,
+  getExperiment,
   listAnalyses,
+  listExperiments,
   listModels,
   listSources,
   materializeCell,
   rerunAllCells,
   rerunAnalysisCell,
+  rerunExperiment,
   scheduleReport,
   trainModel,
   updateAnalysis,
   updateAnalysisCell,
+  type Experiment,
+  type ExperimentStage,
+  type ExperimentSummary,
   type ModelInfo,
 } from '../api'
 import type { Analysis, AnalysisCell, AnalysisSummary, SourceSummary } from '../types'
@@ -28,6 +36,7 @@ function sanitizeAlias(name: string): string {
 }
 
 export function DataScienceView() {
+  const [mode, setMode] = useState<'analyses' | 'experiments'>('analyses')
   const [analyses, setAnalyses] = useState<AnalysisSummary[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -55,9 +64,17 @@ export function DataScienceView() {
     setSelected(analysis.id)
   }
 
+  if (mode === 'experiments') {
+    return <ExperimentsView onSwitchMode={() => setMode('analyses')} />
+  }
+
   return (
     <div className="datasets">
       <aside className="datasets-list">
+        <div className="add-source-tabs ds-mode-tabs">
+          <button className="active">💬 Analyses</button>
+          <button onClick={() => setMode('experiments')}>🧬 Experiments</button>
+        </div>
         <div className="datasets-list-header">
           <h1>Analyses</h1>
           <span>
@@ -114,6 +131,289 @@ export function DataScienceView() {
         <ModelsPanel />
       </aside>
     </div>
+  )
+}
+
+const STAGE_ICONS: Record<string, string> = {
+  plan: '🗺',
+  explore: '🔍',
+  clean: '🧹',
+}
+
+function ExperimentsView({ onSwitchMode }: { onSwitchMode: () => void }) {
+  const [experiments, setExperiments] = useState<ExperimentSummary[]>([])
+  const [selected, setSelected] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [objective, setObjective] = useState('')
+  const [source, setSource] = useState('')
+  const [target, setTarget] = useState('')
+  const [sources, setSources] = useState<SourceSummary[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  const refresh = useCallback(() => {
+    listExperiments()
+      .then((list) => {
+        setExperiments(list)
+        setSelected((current) =>
+          current && list.some((e) => e.id === current) ? current : (list[0]?.id ?? null),
+        )
+      })
+      .catch(() => setExperiments([]))
+  }, [])
+
+  useEffect(refresh, [refresh])
+  useEffect(() => {
+    listSources().then(setSources).catch(() => setSources([]))
+  }, [])
+
+  const create = async () => {
+    setError(null)
+    try {
+      const experiment = await createExperiment(objective.trim(), source, target.trim() || undefined)
+      setCreating(false)
+      setObjective('')
+      setTarget('')
+      refresh()
+      setSelected(experiment.id)
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
+  return (
+    <div className="datasets">
+      <aside className="datasets-list">
+        <div className="add-source-tabs ds-mode-tabs">
+          <button onClick={onSwitchMode}>💬 Analyses</button>
+          <button className="active">🧬 Experiments</button>
+        </div>
+        <div className="datasets-list-header">
+          <h1>Experiments</h1>
+          <span>
+            <button onClick={() => setCreating(true)} title="New experiment">
+              ＋
+            </button>{' '}
+            <button onClick={refresh} title="Refresh">
+              ↻
+            </button>
+          </span>
+        </div>
+        {creating && (
+          <div className="credential-form">
+            <textarea
+              rows={2}
+              value={objective}
+              placeholder="Objective, e.g. Predict churn from customer data"
+              onChange={(e) => setObjective(e.target.value)}
+            />
+            <select value={source} onChange={(e) => setSource(e.target.value)}>
+              <option value="">Source…</option>
+              {sources
+                .filter((s) => s.kind !== 'duckdb')
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+            </select>
+            <input
+              value={target}
+              placeholder="Target column (optional)"
+              onChange={(e) => setTarget(e.target.value)}
+            />
+            <div className="credential-form-actions">
+              <button
+                className="primary-small"
+                disabled={!objective.trim() || !source}
+                onClick={() => void create()}
+              >
+                Run crew
+              </button>
+              <button onClick={() => setCreating(false)}>Cancel</button>
+            </div>
+            {error && <p className="error-text">{error}</p>}
+          </div>
+        )}
+        {experiments.length === 0 && !creating && (
+          <p className="config-subtitle">
+            No experiments yet. State an objective — a crew of agents plans,
+            explores, and cleans the data, with every artifact reviewed.
+          </p>
+        )}
+        {experiments.map((experiment) => (
+          <button
+            key={experiment.id}
+            className={`dataset-item${selected === experiment.id ? ' active' : ''}`}
+            onClick={() => setSelected(experiment.id)}
+          >
+            <strong className="truncate">{experiment.objective}</strong>
+            <span>
+              {experiment.status === 'running'
+                ? `running · ${experiment.stages_done}/${experiment.stages_total}`
+                : experiment.status}
+            </span>
+          </button>
+        ))}
+      </aside>
+      {selected ? (
+        <ExperimentDetail key={selected} experimentId={selected} onDeleted={refresh} />
+      ) : (
+        <div className="dataset-detail" />
+      )}
+    </div>
+  )
+}
+
+function ExperimentDetail({
+  experimentId,
+  onDeleted,
+}: {
+  experimentId: string
+  onDeleted: () => void
+}) {
+  const [experiment, setExperiment] = useState<Experiment | null>(null)
+
+  const load = useCallback(() => {
+    getExperiment(experimentId).then(setExperiment).catch(() => setExperiment(null))
+  }, [experimentId])
+
+  useEffect(load, [load])
+
+  // Poll while the crew is working
+  useEffect(() => {
+    if (!experiment || !['queued', 'running'].includes(experiment.status)) return
+    const timer = setInterval(load, 1500)
+    return () => clearInterval(timer)
+  }, [experiment, load])
+
+  if (!experiment) return <div className="dataset-detail" />
+
+  return (
+    <div className="dataset-detail">
+      <div className="dataset-detail-header">
+        <h2 className="truncate">{experiment.objective}</h2>
+        <span className={`node-output-status ${
+          experiment.status === 'ok'
+            ? 'status-completed'
+            : experiment.status === 'error'
+              ? 'status-failed'
+              : 'status-running-chip'
+        }`}>
+          {experiment.status}
+        </span>
+        <span className="credential-row-actions">
+          <button
+            title="Re-run the crew against current data"
+            onClick={async () => {
+              await rerunExperiment(experimentId)
+              load()
+            }}
+          >
+            ↻
+          </button>
+          <button
+            className="danger"
+            title="Delete experiment"
+            onClick={async () => {
+              await deleteExperiment(experimentId)
+              onDeleted()
+            }}
+          >
+            🗑
+          </button>
+        </span>
+      </div>
+      {experiment.error && <p className="error-text">{experiment.error}</p>}
+
+      {experiment.stages.map((stage) => (
+        <StageCard key={stage.name} stage={stage} />
+      ))}
+    </div>
+  )
+}
+
+function StageCard({ stage }: { stage: ExperimentStage }) {
+  const artifact = stage.artifact ?? {}
+  return (
+    <section className={`insights-card cell-card${stage.status === 'error' ? ' cell-error' : ''}`}>
+      <div className="cell-header">
+        <strong>
+          {STAGE_ICONS[stage.name] ?? '⚙'} {stage.name}
+        </strong>
+        <span className={`node-output-status ${
+          stage.status === 'ok'
+            ? 'status-completed'
+            : stage.status === 'error'
+              ? 'status-failed'
+              : stage.status === 'running'
+                ? 'status-running-chip'
+                : 'status-skipped'
+        }`}>
+          {stage.status}
+        </span>
+      </div>
+
+      {stage.name === 'plan' && artifact && stage.status === 'ok' && (
+        <p className="cell-narrative">
+          <strong>{String(artifact.task_type ?? '')}</strong>
+          {artifact.target ? <> · target <code>{String(artifact.target)}</code></> : null}
+          <br />
+          Explore: {String(artifact.exploration_focus ?? '—')}
+          <br />
+          Clean: {String(artifact.cleaning_focus ?? '—')}
+        </p>
+      )}
+
+      {stage.name === 'explore' &&
+        Array.isArray((artifact as { queries?: unknown }).queries) &&
+        ((artifact as { queries: Record<string, unknown>[] }).queries).map(
+          (query, index) => (
+            <div key={index} className="explore-query">
+              <p className="config-subtitle">{String(query.purpose ?? '')}</p>
+              {query.status === 'ok' ? (
+                <pre className="cell-sql">
+                  {JSON.stringify((query.rows as unknown[])?.slice(0, 5) ?? [], null, 1)}
+                </pre>
+              ) : (
+                <p className="error-text">{String(query.error ?? '')}</p>
+              )}
+              <details className="output-paths">
+                <summary>SQL</summary>
+                <pre className="cell-sql">{String(query.sql ?? '')}</pre>
+              </details>
+            </div>
+          ),
+        )}
+
+      {stage.name === 'clean' && stage.status === 'ok' && (
+        <>
+          <p className="cell-narrative">{String(artifact.intent ?? '')}</p>
+          <p className="config-subtitle">
+            → dataset <code>{String(artifact.dataset ?? '')}</code> ·{' '}
+            {String(artifact.row_count ?? '?')} rows — now available in Analytics
+            and as a catalog source.
+          </p>
+          <details className="output-paths">
+            <summary>SQL</summary>
+            <pre className="cell-sql">{String(artifact.sql ?? '')}</pre>
+          </details>
+        </>
+      )}
+
+      {stage.error && stage.status === 'error' && (
+        <p className="error-text">{stage.error}</p>
+      )}
+
+      {stage.verdicts.length > 0 && (
+        <p className="config-subtitle">
+          {stage.verdicts.map((verdict, index) => (
+            <span key={index}>
+              {verdict.verdict === 'approve' ? '✅' : '♻️'} reviewer: {verdict.reason}{' '}
+            </span>
+          ))}
+        </p>
+      )}
+    </section>
   )
 }
 

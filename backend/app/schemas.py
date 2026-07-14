@@ -220,3 +220,9 @@ class ModelPredictRequest(BaseModel):
     source: str
     dataset: str | None = None
     mode: str = "replace"
+
+
+class ExperimentCreate(BaseModel):
+    objective: str
+    source: str
+    target: str | None = None
