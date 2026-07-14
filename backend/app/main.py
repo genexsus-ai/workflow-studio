@@ -56,6 +56,10 @@ def create_app() -> FastAPI:
     register_studio_tools()
     seed_examples(settings.data_dir)
 
+    from app.demo_seed import seed_demo_data
+
+    seed_demo_data()
+
     app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
 
     if settings.studio_api_token:
