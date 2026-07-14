@@ -417,3 +417,57 @@ def make_model_predict_tool() -> Any:
             )
 
     return ModelPredictTool()
+
+
+def cross_validate_spec(
+    source_id: str,
+    target: str,
+    model_type: str,
+    features: list[str] | None = None,
+    k: int = 5,
+) -> dict[str, Any]:
+    """k-fold cross-validation for a train spec; flags overfitting."""
+    from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+    from sklearn.linear_model import LinearRegression, LogisticRegression
+    from sklearn.model_selection import cross_validate as sk_cross_validate
+
+    if model_type not in MODEL_TYPES:
+        raise ValueError(f"model_type must be one of {sorted(MODEL_TYPES)}")
+    feature_names, X, y, _ = _load_frame(source_id, target, features)
+    is_regression = model_type in _REGRESSORS
+    if is_regression:
+        y = [float(v) for v in y]
+
+    estimator = {
+        "linear_regression": LinearRegression(),
+        "logistic_regression": LogisticRegression(max_iter=1000),
+        "random_forest_regression": RandomForestRegressor(
+            n_estimators=100, random_state=42
+        ),
+        "random_forest_classification": RandomForestClassifier(
+            n_estimators=100, random_state=42
+        ),
+    }[model_type]
+
+    k = max(2, min(int(k), 10, len(X) // 2))
+    scoring = "r2" if is_regression else "accuracy"
+    results = sk_cross_validate(
+        estimator, X, y, cv=k, scoring=scoring, return_train_score=True
+    )
+    val_scores = [round(float(s), 4) for s in results["test_score"]]
+    train_mean = float(sum(results["train_score"]) / k)
+    val_mean = float(sum(results["test_score"]) / k)
+    gap = round(train_mean - val_mean, 4)
+    return {
+        "metric": scoring,
+        "folds": k,
+        "scores": val_scores,
+        "mean": round(val_mean, 4),
+        "std": round(
+            (sum((s - val_mean) ** 2 for s in results["test_score"]) / k) ** 0.5, 4
+        ),
+        "train_mean": round(train_mean, 4),
+        "train_val_gap": gap,
+        "overfit_warning": gap > 0.15,
+        "features": feature_names,
+    }

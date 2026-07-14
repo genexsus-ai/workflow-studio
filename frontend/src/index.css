@@ -2262,3 +2262,29 @@ button.danger {
   padding-top: 6px;
   margin-top: 6px;
 }
+
+.figure-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.figure-row img {
+  max-width: 320px;
+  max-height: 220px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.analyze-result-pre {
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 13px;
+  color: #334155;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+}

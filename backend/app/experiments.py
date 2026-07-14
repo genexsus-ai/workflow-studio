@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 MAX_REVIEW_ROUNDS = 2
 MAX_SQL_ATTEMPTS = 3
 EXPLORE_RESULT_ROWS = 20
-STAGE_NAMES = ("plan", "explore", "clean")
+STAGE_NAMES = ("plan", "explore", "clean", "features", "model", "viz", "report")
 
 
 def _now() -> str:
@@ -312,6 +312,130 @@ async def review_artifact(
     return {"verdict": str(parsed["verdict"]), "reason": str(parsed.get("reason", ""))}
 
 
+
+async def draft_features(
+    plan: dict[str, Any], clean_context: str, feedback: str | None = None
+) -> dict[str, str]:
+    """Feature Engineering + Programming Agents: one SQL over the cleaned data."""
+    from app.analyst import run_analyst
+    from genxai.utils.structured import parse_json_loosely
+
+    revise = f"\nFeedback on your previous draft — address it:\n{feedback}\n" if feedback else ""
+    prompt = (
+        f"Experiment plan: {json.dumps(plan)}\n\n"
+        f"Cleaned data (table alias `data`):\n{clean_context}\n{revise}\n"
+        "Write ONE read-only DuckDB SELECT over `data` that builds the model-"
+        "ready feature table: derived ratios, buckets, date parts, useful "
+        "encodings — numeric features where possible. ALWAYS keep the target "
+        "column unchanged. Reply with ONLY JSON:\n"
+        '{"intent": "<features built and why>", "sql": "<SELECT ...>"}'
+    )
+    result = await run_analyst(
+        prompt,
+        role="Feature Engineering Agent",
+        goal="Build the feature table the model will learn from",
+        backstory="Return only valid JSON. No prose.",
+    )
+    parsed = parse_json_loosely(result["output"])
+    if not isinstance(parsed, dict) or not parsed.get("sql"):
+        raise ValueError(f"Feature engineer returned no SQL: {result['output'][:200]}")
+    return {"intent": str(parsed.get("intent", "")), "sql": str(parsed["sql"])}
+
+
+async def draft_model_plan(
+    plan: dict[str, Any], features_context: str, feedback: str | None = None
+) -> dict[str, Any]:
+    """Model Algorithm Agent: pick spec (fast path) or Python code stage."""
+    from app.analyst import run_analyst
+    from genxai.utils.structured import parse_json_loosely
+
+    revise = f"\nFeedback on your previous proposal — address it:\n{feedback}\n" if feedback else ""
+    prompt = (
+        f"Experiment plan: {json.dumps(plan)}\n\n"
+        f"Feature table (available at ./data/data.parquet for code, alias "
+        f"`data` conceptually):\n{features_context}\n{revise}\n"
+        "Choose the modeling approach. Prefer approach \"spec\" (built-in "
+        "primitives) unless the problem genuinely needs a custom pipeline.\n"
+        "Reply with ONLY JSON, one of:\n"
+        '{"approach": "spec", "model_type": "linear_regression"|"logistic_regression"|'
+        '"random_forest_regression"|"random_forest_classification", '
+        '"features": [<columns>] or null, "rationale": "<why>"}\n'
+        'or {"approach": "code", "code": "<python: read ./data/data.parquet with pandas, '
+        "train sklearn, save ./out/model.joblib and ./out/metrics.json>\", "
+        '"rationale": "<why>"}'
+    )
+    result = await run_analyst(
+        prompt,
+        role="Model Algorithm Agent",
+        goal="Choose and specify the right model for the task and data",
+        backstory="Return only valid JSON. No prose.",
+    )
+    parsed = parse_json_loosely(result["output"])
+    if not isinstance(parsed, dict) or parsed.get("approach") not in ("spec", "code"):
+        raise ValueError(f"Model agent returned no approach: {result['output'][:200]}")
+    return parsed
+
+
+async def draft_visualization(
+    plan: dict[str, Any], features_context: str, results_summary: str,
+    feedback: str | None = None,
+) -> str:
+    """Visualization Agent: matplotlib code producing ./out/figures/*.png."""
+    from app.analyst import run_analyst
+
+    revise = f"\nFeedback on your previous code — address it:\n{feedback}\n" if feedback else ""
+    prompt = (
+        f"Experiment plan: {json.dumps(plan)}\n\n"
+        f"Feature data at ./data/data.parquet:\n{features_context}\n\n"
+        f"Model results so far:\n{results_summary}\n{revise}\n"
+        "Write a Python script (pandas + matplotlib, MPLBACKEND is Agg) that "
+        "reads ./data/data.parquet and saves 1-3 insightful figures as PNG "
+        "files into ./out/figures/ (e.g. target distribution, top feature "
+        "relationships). Only use pandas/numpy/matplotlib. Reply with ONLY "
+        "the Python code, no fences, no prose."
+    )
+    result = await run_analyst(
+        prompt,
+        role="Visualization Agent",
+        goal="Show the data story behind the model in a few honest figures",
+        backstory="Return only runnable Python source. No markdown fences.",
+    )
+    code = result["output"].strip()
+    if code.startswith("```"):
+        code = code.strip("`\n")
+        if code.startswith("python"):
+            code = code[len("python"):]
+    return code.strip()
+
+
+async def narrate_report(summary: dict[str, Any]) -> dict[str, str]:
+    """Metric Performance Agent: the final verdict and report."""
+    from app.analyst import run_analyst
+    from genxai.utils.structured import parse_json_loosely
+
+    prompt = (
+        f"Experiment summary as JSON:\n{json.dumps(summary, default=str)[:9000]}\n\n"
+        "Write the final report. Reply with ONLY JSON:\n"
+        '{"recommendation": "ship"|"iterate"|"abandon",\n'
+        ' "report": "<markdown: objective, what the data showed, what was '
+        "cleaned/engineered, model performance in business terms (explain the "
+        'metrics), risks/caveats, and concrete next steps>"}'
+    )
+    result = await run_analyst(
+        prompt,
+        role="Metric Performance Agent",
+        goal="Judge the experiment honestly and explain it in business terms",
+        backstory="Return only valid JSON. Be candid about weaknesses.",
+    )
+    parsed = parse_json_loosely(result["output"])
+    if not isinstance(parsed, dict) or not parsed.get("report"):
+        raise ValueError(f"Report agent returned nothing: {result['output'][:200]}")
+    return {
+        "recommendation": str(parsed.get("recommendation", "iterate")),
+        "report": str(parsed["report"]),
+    }
+
+
 # ------------------------------------------------------------------ pipeline
 
 
@@ -341,6 +465,140 @@ def _execute_sql(sql: str, source_id: str) -> tuple[list[str], list[dict[str, An
             if key not in columns:
                 columns.append(key)
     return columns, rows
+
+
+
+async def _run_model_stage(
+    experiment: dict[str, Any],
+    stage: dict[str, Any],
+    plan: dict[str, Any],
+    target: str | None,
+    features_source: str,
+    features_context: str,
+) -> dict[str, Any]:
+    """Model selection -> CV -> train -> holdout -> predictions dataset."""
+    if plan.get("task_type") == "descriptive" or not target:
+        stage["artifact"] = {
+            "skipped": True,
+            "reason": "Descriptive objective (no target column) — no model trained",
+        }
+        return {"skipped": True}
+
+    from app import ml
+
+    proposal = await draft_model_plan(plan, features_context)
+    review = await review_artifact("model proposal", proposal, plan, features_context)
+    stage["verdicts"].append(review)
+    if review["verdict"] == "revise":
+        proposal = await draft_model_plan(plan, features_context, feedback=review["reason"])
+        stage["verdicts"].append(
+            await review_artifact("model proposal", proposal, plan, features_context)
+        )
+
+    if proposal.get("approach") == "code":
+        from app.code_stage import run_code_stage
+
+        code = str(proposal.get("code") or "")
+        adapter_rows = _execute_sql("SELECT * FROM data", features_source)[1]
+        result = await run_code_stage(code, {"data": adapter_rows})
+        if result["status"] != "ok":
+            raise RuntimeError(f"Model code stage failed: {result.get('error')}")
+        metrics = result.get("metrics") or {}
+        model_name = f"exp_{experiment['id'][:8]}_model"
+        registered = None
+        if result.get("model_file_id"):
+            from app.ml import get_model_registry
+
+            registered = {
+                "id": uuid.uuid4().hex,
+                "name": model_name,
+                "model_type": str(metrics.get("model_type", "custom_code")),
+                "source_id": features_source,
+                "target": target,
+                "features": list(metrics.get("features", [])),
+                "metrics": metrics,
+                "file_id": result["model_file_id"],
+                "created_at": _now(),
+            }
+            get_model_registry().save(registered)
+        stage["artifact"] = {
+            "approach": "code",
+            "rationale": proposal.get("rationale"),
+            "code": code,
+            "metrics": metrics,
+            "model_name": model_name if registered else None,
+            "stdout": result.get("stdout", "")[-1000:],
+        }
+        return {"approach": "code", "metrics": metrics}
+
+    model_type = str(proposal.get("model_type") or "")
+    features = proposal.get("features") or None
+    cv = ml.cross_validate_spec(
+        features_source, target, model_type, features
+    )
+    model_name = f"exp_{experiment['id'][:8]}_model"
+    trained = ml.train_model(model_name, features_source, target, model_type, features)
+    predictions = ml.predict_with_model(
+        trained["id"], features_source, dataset=f"exp_{experiment['id'][:8]}_predictions"
+    )
+    stage["artifact"] = {
+        "approach": "spec",
+        "rationale": proposal.get("rationale"),
+        "model_type": model_type,
+        "model_name": model_name,
+        "cross_validation": cv,
+        "holdout_metrics": trained["metrics"],
+        "predictions_dataset": predictions["dataset"],
+    }
+    return {
+        "approach": "spec",
+        "model_type": model_type,
+        "cv": cv,
+        "holdout": trained["metrics"],
+    }
+
+
+async def _run_viz_stage(
+    experiment: dict[str, Any],
+    stage: dict[str, Any],
+    plan: dict[str, Any],
+    features_source: str,
+    features_context: str,
+    model_result: dict[str, Any],
+) -> None:
+    """Visualization Agent -> reviewed code stage -> figures in file store."""
+    from app.code_stage import check_imports, run_code_stage
+
+    results_summary = json.dumps(model_result, default=str)[:1500]
+    code = await draft_visualization(plan, features_context, results_summary)
+    review = await review_artifact(
+        "visualization code", {"code": code[:3000]}, plan, features_context
+    )
+    stage["verdicts"].append(review)
+    if review["verdict"] == "revise" or check_imports(code):
+        feedback = review["reason"] if review["verdict"] == "revise" else (
+            f"Disallowed imports: {check_imports(code)}"
+        )
+        code = await draft_visualization(
+            plan, features_context, results_summary, feedback=feedback
+        )
+        stage["verdicts"].append(
+            await review_artifact(
+                "visualization code", {"code": code[:3000]}, plan, features_context
+            )
+        )
+
+    rows = _execute_sql("SELECT * FROM data", features_source)[1]
+    result = await run_code_stage(code, {"data": rows})
+    if result["status"] != "ok":
+        raise RuntimeError(f"Visualization code failed: {result.get('error')}")
+    if not result.get("figures"):
+        raise RuntimeError("Visualization produced no figures")
+    stage["artifact"] = {
+        "code": code,
+        "figures": result["figures"],
+        "stdout": result.get("stdout", "")[-500:],
+    }
 
 
 async def run_experiment(experiment_id: str) -> None:
@@ -458,13 +716,111 @@ async def run_experiment(experiment_id: str) -> None:
                 "row_count": written,
             }
             stage["status"] = "ok"
-            experiment["status"] = "ok"
             store.save(experiment)
-            return
+            break
+        else:
+            raise RuntimeError(
+                f"Cleaning failed after {MAX_SQL_ATTEMPTS} attempts: {last_error}"
+            )
 
-        raise RuntimeError(
-            f"Cleaning failed after {MAX_SQL_ATTEMPTS} attempts: {last_error}"
+        clean_dataset = _stage(experiment, "clean")["artifact"]["dataset"]
+        clean_source = f"dataset:{clean_dataset}"
+        clean_context = _sources_context(clean_source)
+
+        # --------------------------------------------------------- features
+        stage = _stage(experiment, "features")
+        stage["status"] = "running"
+        store.save(experiment)
+        feedback = None
+        last_error = None
+        for _attempt in range(MAX_SQL_ATTEMPTS):
+            draft = await draft_features(plan, clean_context, feedback)
+            review = await review_artifact("feature SQL", draft, plan, clean_context)
+            stage["verdicts"].append(review)
+            if review["verdict"] == "revise":
+                feedback = review["reason"]
+                last_error = f"reviewer requested revision: {review['reason']}"
+                continue
+            try:
+                columns, rows = _execute_sql(draft["sql"], clean_source)
+            except Exception as exc:
+                feedback = f"The SQL failed to execute: {exc}"
+                last_error = str(exc)
+                continue
+            if not rows:
+                feedback = "The feature SQL returned zero rows."
+                last_error = "features produced zero rows"
+                continue
+            features_dataset = f"exp_{experiment['id'][:8]}_features"
+            from genxai.core.datasets import get_dataset_store
+
+            written = get_dataset_store().replace(features_dataset, rows)
+            stage["artifact"] = {
+                "intent": draft["intent"],
+                "sql": draft["sql"],
+                "dataset": features_dataset,
+                "columns": columns,
+                "row_count": written,
+            }
+            stage["status"] = "ok"
+            store.save(experiment)
+            break
+        else:
+            raise RuntimeError(
+                f"Feature engineering failed after {MAX_SQL_ATTEMPTS} attempts: {last_error}"
+            )
+
+        features_source = f"dataset:{features_dataset}"
+        features_context = _sources_context(features_source)
+
+        # ------------------------------------------------------------ model
+        stage = _stage(experiment, "model")
+        stage["status"] = "running"
+        store.save(experiment)
+        target = plan.get("target") or experiment["target"]
+        model_result = await _run_model_stage(
+            experiment, stage, plan, target, features_source, features_context
         )
+        stage["status"] = "ok"
+        store.save(experiment)
+
+        # -------------------------------------------------------------- viz
+        stage = _stage(experiment, "viz")
+        stage["status"] = "running"
+        store.save(experiment)
+        try:
+            await _run_viz_stage(
+                experiment, stage, plan, features_source, features_context,
+                model_result,
+            )
+            stage["status"] = "ok"
+        except Exception as exc:
+            # Figures are valuable but not fatal — record and continue
+            stage["status"] = "error"
+            stage["error"] = str(exc)
+        store.save(experiment)
+
+        # ------------------------------------------------------------ report
+        stage = _stage(experiment, "report")
+        stage["status"] = "running"
+        store.save(experiment)
+        summary = {
+            "objective": experiment["objective"],
+            "plan": plan,
+            "exploration": exploration_summary,
+            "cleaning": _stage(experiment, "clean")["artifact"]["intent"],
+            "cleaned_rows": _stage(experiment, "clean")["artifact"]["row_count"],
+            "features": _stage(experiment, "features")["artifact"]["intent"],
+            "feature_columns": _stage(experiment, "features")["artifact"]["columns"],
+            "model": model_result,
+            "figures": len((_stage(experiment, "viz")["artifact"] or {}).get("figures", [])),
+        }
+        report = await narrate_report(summary)
+        stage["artifact"] = report
+        stage["status"] = "ok"
+        experiment["status"] = "ok"
+        store.save(experiment)
+        return
 
     except Exception as exc:
         logger.warning("Experiment %s failed: %s", experiment_id, exc)

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import {
   addAnalysisCell,
+  apiBase,
   addManualCell,
   createAnalysis,
   createExperiment,
@@ -138,6 +139,10 @@ const STAGE_ICONS: Record<string, string> = {
   plan: '🗺',
   explore: '🔍',
   clean: '🧹',
+  features: '🧱',
+  model: '🤖',
+  viz: '📈',
+  report: '📋',
 }
 
 function ExperimentsView({ onSwitchMode }: { onSwitchMode: () => void }) {
@@ -397,6 +402,101 @@ function StageCard({ stage }: { stage: ExperimentStage }) {
             <summary>SQL</summary>
             <pre className="cell-sql">{String(artifact.sql ?? '')}</pre>
           </details>
+        </>
+      )}
+
+      {stage.name === 'features' && stage.status === 'ok' && (
+        <>
+          <p className="cell-narrative">{String(artifact.intent ?? '')}</p>
+          <p className="config-subtitle">
+            → dataset <code>{String(artifact.dataset ?? '')}</code> ·{' '}
+            {String(artifact.row_count ?? '?')} rows ·{' '}
+            {(artifact.columns as string[] | undefined)?.length ?? '?'} columns
+          </p>
+          <details className="output-paths">
+            <summary>SQL</summary>
+            <pre className="cell-sql">{String(artifact.sql ?? '')}</pre>
+          </details>
+        </>
+      )}
+
+      {stage.name === 'model' && stage.status === 'ok' && (
+        artifact.skipped ? (
+          <p className="config-subtitle">{String(artifact.reason ?? 'Skipped')}</p>
+        ) : (
+          <>
+            <p className="cell-narrative">
+              <strong>{String(artifact.model_type ?? artifact.approach ?? '')}</strong>
+              {artifact.rationale ? ` — ${String(artifact.rationale)}` : ''}
+            </p>
+            {Boolean(artifact.cross_validation) && (
+              <p className="config-subtitle">
+                CV ({String((artifact.cross_validation as Record<string, unknown>).folds)}-fold{' '}
+                {String((artifact.cross_validation as Record<string, unknown>).metric)}):{' '}
+                {String((artifact.cross_validation as Record<string, unknown>).mean)} ±{' '}
+                {String((artifact.cross_validation as Record<string, unknown>).std)}
+                {(artifact.cross_validation as Record<string, unknown>).overfit_warning
+                  ? ' · ⚠ possible overfit'
+                  : ''}
+              </p>
+            )}
+            {Boolean(artifact.holdout_metrics ?? artifact.metrics) && (
+              <pre className="cell-sql">
+                {JSON.stringify(artifact.holdout_metrics ?? artifact.metrics, null, 1)}
+              </pre>
+            )}
+            {Boolean(artifact.predictions_dataset) && (
+              <p className="config-subtitle">
+                Predictions → dataset <code>{String(artifact.predictions_dataset)}</code>
+                {' · model '}<code>{String(artifact.model_name ?? '')}</code> in the Models rail
+              </p>
+            )}
+            {Boolean(artifact.code) && (
+              <details className="output-paths">
+                <summary>Model code</summary>
+                <pre className="cell-sql">{String(artifact.code)}</pre>
+              </details>
+            )}
+          </>
+        )
+      )}
+
+      {stage.name === 'viz' && stage.status === 'ok' && (
+        <>
+          <div className="figure-row">
+            {((artifact.figures as { id: string; name: string }[] | undefined) ?? []).map(
+              (figure) => (
+                <a
+                  key={figure.id}
+                  href={`${apiBase}/files/${figure.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <img src={`${apiBase}/files/${figure.id}`} alt={figure.name} />
+                </a>
+              ),
+            )}
+          </div>
+          <details className="output-paths">
+            <summary>Visualization code</summary>
+            <pre className="cell-sql">{String(artifact.code ?? '')}</pre>
+          </details>
+        </>
+      )}
+
+      {stage.name === 'report' && stage.status === 'ok' && (
+        <>
+          <p className="config-subtitle">
+            Recommendation:{' '}
+            <strong>
+              {artifact.recommendation === 'ship'
+                ? '🚀 ship'
+                : artifact.recommendation === 'abandon'
+                  ? '🛑 abandon'
+                  : '🔁 iterate'}
+            </strong>
+          </p>
+          <pre className="analyze-result-pre">{String(artifact.report ?? '')}</pre>
         </>
       )}
 
