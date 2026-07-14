@@ -365,23 +365,6 @@ export const analyzeSource = (id: string, question?: string) =>
     body: JSON.stringify({ question: question || null }),
   }).then((r) => json<DatasetAnalysis>(r))
 
-export interface CodeAnalysis {
-  source: string
-  request: string
-  code: string
-  review: { verdict: string; reason: string }[]
-  figures: { id: string; name: string }[]
-  datasets: Record<string, number>
-  stdout: string
-}
-
-export const codeAnalysis = (id: string, request: string) =>
-  fetch(`${API}/analytics/sources/${id}/code`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ request }),
-  }).then((r) => json<CodeAnalysis>(r))
-
 export interface DashboardReportSummary {
   id: string
   source: string
@@ -395,6 +378,7 @@ export interface DashboardReport {
   source: string
   source_name: string
   focus?: string | null
+  plan?: { name: string; kind: string; purpose: string; columns: string[] }[]
   report: string
   figures: { id: string; name: string }[]
   datasets: Record<string, number>

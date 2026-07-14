@@ -1,11 +1,13 @@
-"""Analytics code crew: Python Coder + Code Review agents.
+"""Analytics dashboard crew: Planner, Python Coder, Code Review, Reporter.
 
-The Python Coder Agent writes pandas/matplotlib code for data
-manipulation and visualization over a catalog source; the Code Review
-Agent gates it under the code-stage contract; the platform executes it
-in the sandboxed code-stage runtime (subprocess, scrubbed environment,
-import allowlist, timeout). Figures land in the file store; derived
-tables materialize into the dataset store and become catalog sources.
+The Dashboard Planning Agent (the manager) decides WHICH charts to
+build; the Python Coder Agent implements them in pandas/matplotlib;
+the Code Review Agent gates the script under the code-stage contract;
+the platform executes it in the sandboxed code-stage runtime
+(subprocess, scrubbed environment, import allowlist, timeout); the
+Analytics Reporter narrates the result grounded in computed numbers.
+Figures land in the file store; derived tables materialize into the
+dataset store and become catalog sources; reports persist per source.
 """
 
 from __future__ import annotations
@@ -176,15 +178,73 @@ async def run_code_analysis(source_id: str, request: str) -> dict[str, Any]:
 # ------------------------------------------------------------ dashboard report
 
 
-DASHBOARD_REQUEST = (
-    "Build a compact analytics dashboard for this data{focus}. Produce 3-6 "
-    "distinct, informative matplotlib charts (trend over time if a time-like "
-    "column exists, top categories, distributions, comparisons — whatever "
-    "the columns support), each saved to ./out/figures/<slug>.png with a "
-    "clear title and labeled axes. Compute the key summary numbers behind "
-    "the charts, write them as one flat JSON object to ./out/metrics.json, "
-    "and print a short plain-text summary to stdout."
-)
+async def plan_dashboard(
+    context: str, focus: str | None = None
+) -> list[dict[str, Any]]:
+    """Dashboard Planning Agent (the manager): decide WHICH charts to build.
+
+    Returns 3-6 chart specs [{name, kind, purpose, columns}] the Python
+    Coder Agent must then implement one-for-one.
+    """
+    from app.analyst import run_analyst
+    from genxai.utils.structured import parse_json_loosely
+
+    focus_line = f"Requested focus: {focus}\n" if focus else ""
+    prompt = (
+        f"{context[:2500]}\n{focus_line}\n"
+        "Plan a compact analytics dashboard for this data. Choose 3-6 charts "
+        "that together give the best overview: a trend over time if a "
+        "time-like column exists, top categories, distributions, "
+        "comparisons. Use ONLY columns that exist. Each chart must answer "
+        "a distinct question.\n"
+        "Reply with ONLY JSON:\n"
+        '{"charts": [{"name": "<snake_case_slug>", '
+        '"kind": "line"|"bar"|"hist"|"scatter"|"box"|"heatmap", '
+        '"purpose": "<the question this chart answers>", '
+        '"columns": ["<column>", ...]}, ...]}'
+    )
+    result = await run_analyst(
+        prompt,
+        role="Dashboard Planning Agent",
+        goal="Plan the smallest set of charts that best explains the data",
+        backstory="Return only valid JSON. No prose.",
+    )
+    parsed = parse_json_loosely(result["output"])
+    raw_charts = parsed.get("charts") if isinstance(parsed, dict) else None
+    charts: list[dict[str, Any]] = []
+    for entry in raw_charts or []:
+        if not isinstance(entry, dict) or not entry.get("name"):
+            continue
+        charts.append(
+            {
+                "name": _dataset_name(str(entry["name"])),
+                "kind": str(entry.get("kind", "")),
+                "purpose": str(entry.get("purpose", "")),
+                "columns": [str(col) for col in (entry.get("columns") or [])],
+            }
+        )
+    if not charts:
+        raise RuntimeError(
+            f"Dashboard planner returned no charts: {result['output'][:200]}"
+        )
+    return charts[:6]
+
+
+def _plan_to_request(plan: list[dict[str, Any]]) -> str:
+    """The coder's brief: implement the planned charts one-for-one."""
+    chart_lines = "\n".join(
+        f"{index + 1}. {chart['name']} — {chart['kind']} chart: {chart['purpose']}"
+        + (f" (columns: {', '.join(chart['columns'])})" if chart["columns"] else "")
+        + f". Save as ./out/figures/{chart['name']}.png"
+        for index, chart in enumerate(plan)
+    )
+    return (
+        "Implement this dashboard plan EXACTLY — one PNG per planned chart, "
+        f"clear title and labeled axes on each:\n{chart_lines}\n"
+        "Also write the key summary numbers behind the charts as one flat "
+        "JSON object to ./out/metrics.json and print a short plain-text "
+        "summary to stdout."
+    )
 
 
 class ReportStore:
@@ -310,18 +370,17 @@ async def narrate_dashboard(
 async def run_dashboard_report(
     source_id: str, focus: str | None = None
 ) -> dict[str, Any]:
-    """Code crew builds the charts; the Reporter narrates; the store keeps it."""
+    """Planner picks the charts; the code crew builds them; the Reporter
+    narrates; the store keeps it."""
     source = resolve_source(source_id)
     if source is None:
         raise LookupError(f"Source '{source_id}' not found")
 
-    request = DASHBOARD_REQUEST.format(
-        focus=f", focused on: {focus}" if focus else ""
-    )
-    analysis = await run_code_analysis(source_id, request)
-
     adapter = get_adapter(source)
     context = _source_context(source, adapter)
+    plan = await plan_dashboard(context, focus)
+    analysis = await run_code_analysis(source_id, _plan_to_request(plan))
+
     report_md = await narrate_dashboard(
         source["name"],
         context,
@@ -336,6 +395,7 @@ async def run_dashboard_report(
         "source": source_id,
         "source_name": source["name"],
         "focus": focus,
+        "plan": plan,
         "report": report_md,
         "figures": analysis["figures"],
         "datasets": analysis["datasets"],

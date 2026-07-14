@@ -4,7 +4,6 @@ import {
   aggregateSource,
   analyzeSource,
   apiBase,
-  codeAnalysis,
   createDashboardReport,
   createSource,
   deleteDashboardReport,
@@ -20,7 +19,6 @@ import {
   listSources,
   materializeSource,
   uploadFile,
-  type CodeAnalysis,
   type DashboardReport,
   type DashboardReportSummary,
   type SourceProfile,
@@ -755,7 +753,6 @@ function SourceDetail({
       {source.kind === 'sql' && <MaterializeSection source={source} />}
       <AnalyzeSection sourceId={source.id} />
       <DashboardReportSection sourceId={source.id} />
-      <CodeAnalysisSection sourceId={source.id} />
 
       <section className="insights-card">
         <h2>Rows</h2>
@@ -1098,9 +1095,9 @@ function DashboardReportSection({ sourceId }: { sourceId: string }) {
     <section className="insights-card">
       <h2>Dashboard report</h2>
       <p className="config-subtitle">
-        The code crew builds 3–6 charts over the full data; the Analytics
-        Reporter writes the narrative from the computed numbers. Reports are
-        saved per source.
+        The Dashboard Planner decides which charts matter; the code crew
+        builds them over the full data; the Analytics Reporter writes the
+        narrative from the computed numbers. Reports are saved per source.
       </p>
       <div className="insights-filters">
         <input
@@ -1145,6 +1142,20 @@ function DashboardReportSection({ sourceId }: { sourceId: string }) {
               </a>
             ))}
           </div>
+          {(report.plan ?? []).length > 0 && (
+            <details className="output-paths">
+              <summary>Chart plan ({report.plan!.length} charts)</summary>
+              <ul>
+                {report.plan!.map((chart) => (
+                  <li key={chart.name}>
+                    <strong>{chart.name.replace(/_/g, ' ')}</strong> ({chart.kind})
+                    {' — '}
+                    {chart.purpose}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
           <Markdown text={report.report} />
           {Object.keys(report.datasets).length > 0 && (
             <p className="config-subtitle">
@@ -1178,89 +1189,6 @@ function DashboardReportSection({ sourceId }: { sourceId: string }) {
               delete report
             </button>
           </p>
-        </div>
-      )}
-    </section>
-  )
-}
-
-function CodeAnalysisSection({ sourceId }: { sourceId: string }) {
-  const [request, setRequest] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState<CodeAnalysis | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const run = async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      setResult(await codeAnalysis(sourceId, request))
-    } catch (err) {
-      setError((err as Error).message)
-      setResult(null)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <section className="insights-card">
-      <h2>Python analysis</h2>
-      <p className="config-subtitle">
-        The Python Coder Agent writes pandas/matplotlib code for your request;
-        the Code Review Agent checks it; the platform runs it sandboxed.
-        Derived tables become datasets in the catalog.
-      </p>
-      <div className="insights-filters">
-        <input
-          className="analyze-question"
-          value={request}
-          placeholder="e.g. Pivot revenue by region and month, plot the trend"
-          onChange={(event) => setRequest(event.target.value)}
-        />
-        <button disabled={busy || request.trim().length < 3} onClick={run}>
-          {busy ? 'Coding & running…' : '🐍 Run'}
-        </button>
-      </div>
-      {error && <p className="error-text">{error}</p>}
-      {result && (
-        <div className="analyze-result">
-          {result.figures.length > 0 && (
-            <div className="figure-row">
-              {result.figures.map((figure) => (
-                <a
-                  key={figure.id}
-                  href={`${apiBase}/files/${figure.id}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <img src={`${apiBase}/files/${figure.id}`} alt={figure.name} />
-                </a>
-              ))}
-            </div>
-          )}
-          {Object.keys(result.datasets).length > 0 && (
-            <p className="config-subtitle">
-              New datasets:{' '}
-              {Object.entries(result.datasets).map(([name, count], index) => (
-                <span key={name}>
-                  {index > 0 && ', '}
-                  <code>{name}</code> ({count} rows)
-                </span>
-              ))}
-            </p>
-          )}
-          {result.stdout.trim() && (
-            <pre className="cell-sql">{result.stdout.trim()}</pre>
-          )}
-          <details className="output-paths">
-            <summary>
-              Python code
-              {result.review.length > 0 &&
-                ` · review: ${result.review[result.review.length - 1].verdict}`}
-            </summary>
-            <pre className="cell-sql">{result.code}</pre>
-          </details>
         </div>
       )}
     </section>

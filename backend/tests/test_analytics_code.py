@@ -1,5 +1,8 @@
-"""Tests for the analytics code crew (Python Coder + Code Review agents)."""
+"""Tests for the analytics dashboard crew (Planner + Coder + Reviewer + Reporter)."""
 
+import asyncio
+
+import pytest
 
 GOOD_CODE = """
 import pandas as pd
@@ -29,7 +32,10 @@ def _seed_orders() -> None:
     )
 
 
-def test_code_analysis_end_to_end(client, monkeypatch):
+# ------------------------------------------------- code crew (report engine)
+
+
+def test_code_crew_review_loop_and_materialization(client, monkeypatch):
     import app.analytics_code as ac
 
     _seed_orders()
@@ -49,12 +55,7 @@ def test_code_analysis_end_to_end(client, monkeypatch):
     monkeypatch.setattr(ac, "draft_analysis_code", draft)
     monkeypatch.setattr(ac, "review_analysis_code", review)
 
-    response = client.post(
-        "/api/v1/analytics/sources/dataset:orders/code",
-        json={"request": "Total per region with a bar chart"},
-    )
-    assert response.status_code == 200, response.text
-    body = response.json()
+    body = asyncio.run(ac.run_code_analysis("dataset:orders", "totals by region"))
 
     # Review loop ran: initial draft, one revision round, then approval
     assert len(calls["draft"]) == 2
@@ -66,19 +67,16 @@ def test_code_analysis_end_to_end(client, monkeypatch):
     rows = client.get("/api/v1/datasets/region_totals/rows").json()
     east = next(r for r in rows["rows"] if r["region"] == "east")
     assert east["total"] == 17
-    sources = client.get("/api/v1/data/sources").json()
-    assert any(s["id"] == "dataset:region_totals" for s in sources)
 
-    # Figure stored and served; stdout captured; code echoed back
+    # Figure stored and served; stdout captured
     assert len(body["figures"]) == 1
     png = client.get(f"/api/v1/files/{body['figures'][0]['id']}")
     assert png.status_code == 200
     assert png.content[:8].startswith(b"\x89PNG")
     assert "regions:" in body["stdout"]
-    assert "read_parquet" in body["code"]
 
 
-def test_code_analysis_self_repairs_failing_code(client, monkeypatch):
+def test_code_crew_self_repairs_failing_code(client, monkeypatch):
     import app.analytics_code as ac
 
     _seed_orders()
@@ -97,16 +95,12 @@ def test_code_analysis_self_repairs_failing_code(client, monkeypatch):
     monkeypatch.setattr(ac, "draft_analysis_code", draft)
     monkeypatch.setattr(ac, "review_analysis_code", review)
 
-    response = client.post(
-        "/api/v1/analytics/sources/dataset:orders/code",
-        json={"request": "totals by region"},
-    )
-    assert response.status_code == 200, response.text
+    body = asyncio.run(ac.run_code_analysis("dataset:orders", "totals"))
     assert attempts["n"] == 2
-    assert response.json()["datasets"] == {"region_totals": 2}
+    assert body["datasets"] == {"region_totals": 2}
 
 
-def test_code_analysis_disallowed_imports_feed_back(client, monkeypatch):
+def test_code_crew_disallowed_imports_feed_back(client, monkeypatch):
     import app.analytics_code as ac
 
     _seed_orders()
@@ -124,20 +118,15 @@ def test_code_analysis_disallowed_imports_feed_back(client, monkeypatch):
     monkeypatch.setattr(ac, "draft_analysis_code", draft)
     monkeypatch.setattr(ac, "review_analysis_code", review)
 
-    response = client.post(
-        "/api/v1/analytics/sources/dataset:orders/code",
-        json={"request": "totals by region"},
-    )
-    assert response.status_code == 200, response.text
+    asyncio.run(ac.run_code_analysis("dataset:orders", "totals"))
     assert drafts["feedback"][1].startswith("Disallowed imports: requests")
 
 
-def test_code_analysis_missing_source_404(client):
-    response = client.post(
-        "/api/v1/analytics/sources/dataset:nope/code",
-        json={"request": "anything at all"},
-    )
-    assert response.status_code == 404
+def test_code_crew_missing_source(client):
+    import app.analytics_code as ac
+
+    with pytest.raises(LookupError):
+        asyncio.run(ac.run_code_analysis("dataset:nope", "anything"))
 
 
 # ------------------------------------------------------------ dashboard report
@@ -152,7 +141,7 @@ import matplotlib.pyplot as plt
 
 df = pd.read_parquet("data/data.parquet")
 totals = df.groupby("region")["total"].sum()
-for name in ("chart_totals", "chart_counts"):
+for name in ("region_totals_bar", "totals_distribution"):
     totals.plot(kind="bar")
     plt.savefig(f"out/figures/{name}.png")
     plt.close()
@@ -161,12 +150,25 @@ with open("out/metrics.json", "w") as fh:
 print("grand total:", int(totals.sum()))
 """
 
+PLAN = [
+    {"name": "region_totals_bar", "kind": "bar",
+     "purpose": "Which region sells most?", "columns": ["region", "total"]},
+    {"name": "totals_distribution", "kind": "hist",
+     "purpose": "How are order totals distributed?", "columns": ["total"]},
+]
+
 
 def _stub_dashboard_crew(monkeypatch):
     import app.analytics_code as ac
 
+    seen = {"request": None}
+
+    async def plan(context, focus=None):
+        assert "data.parquet" in context
+        return [dict(chart) for chart in PLAN]
+
     async def draft(request, context, feedback=None):
-        assert "dashboard" in request
+        seen["request"] = request
         return DASHBOARD_CODE
 
     async def review(code, request, context):
@@ -178,14 +180,16 @@ def _stub_dashboard_crew(monkeypatch):
         assert len(figure_names) == 2
         return "## Overview\nTwo regions.\n\n## Key findings\n- grand total 22"
 
+    monkeypatch.setattr(ac, "plan_dashboard", plan)
     monkeypatch.setattr(ac, "draft_analysis_code", draft)
     monkeypatch.setattr(ac, "review_analysis_code", review)
     monkeypatch.setattr(ac, "narrate_dashboard", narrate)
+    return seen
 
 
 def test_dashboard_report_lifecycle(client, monkeypatch):
     _seed_orders()
-    _stub_dashboard_crew(monkeypatch)
+    seen = _stub_dashboard_crew(monkeypatch)
 
     created = client.post(
         "/api/v1/analytics/sources/dataset:orders/report",
@@ -193,6 +197,17 @@ def test_dashboard_report_lifecycle(client, monkeypatch):
     )
     assert created.status_code == 201, created.text
     report = created.json()
+
+    # The coder was briefed with the manager's plan, chart by chart
+    assert "Implement this dashboard plan EXACTLY" in seen["request"]
+    assert "region_totals_bar" in seen["request"]
+    assert "totals_distribution" in seen["request"]
+
+    # The plan is part of the saved report
+    assert [chart["name"] for chart in report["plan"]] == [
+        "region_totals_bar", "totals_distribution"
+    ]
+
     assert report["focus"] == "regional totals"
     assert report["report"].startswith("## Overview")
     assert report["metrics"]["grand_total"] == 22
@@ -210,9 +225,27 @@ def test_dashboard_report_lifecycle(client, monkeypatch):
     assert listing[0]["figures"] == 2
     fetched = client.get(f"/api/v1/analytics/reports/{report['id']}").json()
     assert fetched["report"] == report["report"]
+    assert fetched["plan"] == report["plan"]
 
     # And deletable
     assert client.delete(
         f"/api/v1/analytics/reports/{report['id']}"
     ).status_code == 204
     assert client.get(f"/api/v1/analytics/reports/{report['id']}").status_code == 404
+
+
+def test_dashboard_plan_validation():
+    import app.analytics_code as ac
+
+    request = ac._plan_to_request(PLAN)
+    assert "1. region_totals_bar — bar chart" in request
+    assert "./out/figures/region_totals_bar.png" in request
+    assert "metrics.json" in request
+
+
+def test_python_analysis_endpoint_removed(client):
+    response = client.post(
+        "/api/v1/analytics/sources/dataset:orders/code",
+        json={"request": "anything"},
+    )
+    assert response.status_code in (404, 405)
