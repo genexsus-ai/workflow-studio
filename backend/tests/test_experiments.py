@@ -451,3 +451,99 @@ def test_stubborn_reviewer_cannot_deadlock_valid_sql(client, monkeypatch):
     assert verdicts.count("revise") >= 3  # two review rounds + the final one
     assert "override" in verdicts
     assert clean_stage["artifact"]["dataset"].endswith("_clean")
+
+
+def test_features_dropping_target_gets_feedback_and_recovers(client, monkeypatch):
+    """Regression: agent dropped/encoded the target -> 0 usable training rows."""
+    import app.experiments as exp
+    from genxai.core.datasets import get_dataset_store
+
+    get_dataset_store().append(
+        "points2", [{"x": i, "y": 2 * i + 1} for i in range(40)]
+    )
+    _stub_crew(monkeypatch)
+
+    async def regression_plan(objective, target, context):
+        return {"task_type": "regression", "target": "y",
+                "exploration_focus": "shape", "cleaning_focus": "none"}
+
+    async def keep_all_clean(plan, context, exploration_summary, feedback=None):
+        return {"intent": "no-op", "sql": "SELECT * FROM data"}
+
+    feature_attempts = []
+
+    async def forgetful_features(plan, clean_context, feedback=None):
+        feature_attempts.append(feedback)
+        if feedback is None:
+            # First draft drops the target entirely
+            return {"intent": "oops", "sql": "SELECT x FROM data"}
+        return {"intent": "fixed", "sql": "SELECT x, y FROM data"}
+
+    monkeypatch.setattr(exp, "plan_stage", regression_plan)
+    monkeypatch.setattr(exp, "draft_cleaning", keep_all_clean)
+    monkeypatch.setattr(exp, "draft_features", forgetful_features)
+
+    created = client.post(
+        "/api/v1/datascience/experiments",
+        json={"objective": "predict y", "source": "dataset:points2", "target": "y"},
+    ).json()
+    experiment = _wait_done(client, created["id"])
+
+    assert experiment["status"] == "ok", experiment.get("error")
+    # The guard fed the miss back to the agent
+    assert feature_attempts[0] is None
+    assert "LOST the target column 'y'" in feature_attempts[1]
+    model = next(s for s in experiment["stages"] if s["name"] == "model")["artifact"]
+    assert model["holdout_metrics"]["r2"] > 0.99
+
+
+def test_encoded_target_variant_is_resolved(client, monkeypatch):
+    """An agent renaming churned -> churned_encoded should still train."""
+    import app.experiments as exp
+    from genxai.core.datasets import get_dataset_store
+
+    get_dataset_store().append(
+        "points3", [{"x": i, "y": 2 * i + 1} for i in range(40)]
+    )
+    _stub_crew(monkeypatch)
+
+    async def regression_plan(objective, target, context):
+        return {"task_type": "regression", "target": "y",
+                "exploration_focus": "s", "cleaning_focus": "n"}
+
+    async def keep_all_clean(plan, context, exploration_summary, feedback=None):
+        return {"intent": "no-op", "sql": "SELECT * FROM data"}
+
+    async def renaming_features(plan, clean_context, feedback=None):
+        return {"intent": "encodes target",
+                "sql": "SELECT x, y AS y_encoded FROM data"}
+
+    monkeypatch.setattr(exp, "plan_stage", regression_plan)
+    monkeypatch.setattr(exp, "draft_cleaning", keep_all_clean)
+    monkeypatch.setattr(exp, "draft_features", renaming_features)
+
+    created = client.post(
+        "/api/v1/datascience/experiments",
+        json={"objective": "predict y", "source": "dataset:points3", "target": "y"},
+    ).json()
+    experiment = _wait_done(client, created["id"])
+
+    assert experiment["status"] == "ok", experiment.get("error")
+    features = next(s for s in experiment["stages"] if s["name"] == "features")
+    assert features["artifact"]["target_column"] == "y_encoded"
+    model = next(s for s in experiment["stages"] if s["name"] == "model")["artifact"]
+    assert model["holdout_metrics"]["r2"] > 0.99
+
+
+def test_missing_target_error_is_clear(client):
+    from genxai.core.datasets import get_dataset_store
+
+    get_dataset_store().append("nolabel", [{"a": 1, "b": 2}] * 20)
+    response = client.post(
+        "/api/v1/datascience/models/train",
+        json={"name": "x", "source": "dataset:nolabel", "target": "churned",
+              "model_type": "linear_regression"},
+    )
+    assert response.status_code == 422
+    assert "Target column 'churned' not found" in response.json()["detail"]
+    assert "available columns: a, b" in response.json()["detail"]

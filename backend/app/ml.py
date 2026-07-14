@@ -140,6 +140,12 @@ def _load_frame(
     rows = get_adapter(source).rows(MAX_TRAIN_ROWS, 0)["rows"]
     if not rows:
         raise ValueError(f"Source '{source_id}' has no rows")
+    if target is not None and not any(target in row for row in rows[:50]):
+        available = sorted({k for row in rows[:20] for k in row if not k.startswith("_")})
+        raise ValueError(
+            f"Target column '{target}' not found in source '{source_id}' — "
+            f"available columns: {', '.join(available)}"
+        )
 
     def numeric(value: Any) -> bool:
         return isinstance(value, (int, float)) and not isinstance(value, bool)

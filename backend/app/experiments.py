@@ -394,8 +394,10 @@ async def draft_features(
         f"Cleaned data (table alias `data`):\n{clean_context}\n{revise}\n"
         "Write ONE read-only DuckDB SELECT over `data` that builds the model-"
         "ready feature table: derived ratios, buckets, date parts, useful "
-        "encodings — numeric features where possible. ALWAYS keep the target "
-        "column unchanged. Reply with ONLY JSON:\n"
+        "encodings — numeric features where possible. The target column "
+        f"'{plan.get('target') or '(none)'}' MUST appear in the output "
+        "unchanged (same name, same values) — never drop, rename, or encode "
+        "it. Reply with ONLY JSON:\n"
         '{"intent": "<features built and why>", "sql": "<SELECT ...>"}'
     )
     result = await run_analyst(
@@ -505,6 +507,24 @@ async def narrate_report(summary: dict[str, Any]) -> dict[str, str]:
 
 
 # ------------------------------------------------------------------ pipeline
+
+
+def _resolve_target_column(target: str, columns: list[str]) -> str | None:
+    """Find the target in a column list, tolerating agent renames.
+
+    Feature agents sometimes encode the target (churned -> churned_encoded)
+    despite instructions; accept recognizable variants rather than failing.
+    """
+    if target in columns:
+        return target
+    lowered = {column.lower(): column for column in columns}
+    for candidate in (target.lower(), f"{target.lower()}_encoded", f"{target.lower()}_enc"):
+        if candidate in lowered:
+            return lowered[candidate]
+    for column in columns:
+        if column.lower().startswith(target.lower() + "_"):
+            return column
+    return None
 
 
 def _stage(experiment: dict[str, Any], name: str) -> dict[str, Any]:
@@ -900,6 +920,19 @@ async def run_experiment(experiment_id: str) -> None:
                 feedback = "The feature SQL returned zero rows."
                 last_error = "features produced zero rows"
                 continue
+            expected_target = plan.get("target") or experiment["target"]
+            resolved_target = (
+                _resolve_target_column(str(expected_target), columns)
+                if expected_target and plan.get("task_type") != "descriptive"
+                else None
+            )
+            if expected_target and plan.get("task_type") != "descriptive" and not resolved_target:
+                feedback = (
+                    f"Your output LOST the target column '{expected_target}' — "
+                    "keep it (or a clearly named encoding of it) in the SELECT."
+                )
+                last_error = f"features dropped the target column '{expected_target}'"
+                continue
             features_dataset = f"exp_{experiment['id'][:8]}_features"
             from genxai.core.datasets import get_dataset_store
 
@@ -910,6 +943,7 @@ async def run_experiment(experiment_id: str) -> None:
                 "dataset": features_dataset,
                 "columns": columns,
                 "row_count": written,
+                "target_column": resolved_target,
             }
             stage["status"] = "ok"
             store.save(experiment)
@@ -926,7 +960,11 @@ async def run_experiment(experiment_id: str) -> None:
         stage = _stage(experiment, "model")
         stage["status"] = "running"
         store.save(experiment)
-        target = plan.get("target") or experiment["target"]
+        target = (
+            _stage(experiment, "features")["artifact"].get("target_column")
+            or plan.get("target")
+            or experiment["target"]
+        )
         model_result = await _run_model_stage(
             experiment, stage, plan, target, features_source, features_context
         )
