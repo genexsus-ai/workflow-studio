@@ -845,11 +845,12 @@ body {
   background: #fffbeb;
 }
 
-/* Pinned trigger badge: fixed to the canvas corner, does not pan/zoom. */
+/* Pinned trigger badge: fixed beside the add button (where the ⚡ button
+   sits before a trigger exists); does not pan/zoom with the canvas. */
 .canvas-trigger-badge {
   position: absolute;
   top: 12px;
-  left: 12px;
+  left: 56px;
   z-index: 5;
   display: flex;
   align-items: center;
