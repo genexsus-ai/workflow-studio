@@ -864,8 +864,60 @@ body {
   cursor: pointer;
 }
 
-.canvas-trigger-badge:hover {
-  border-color: #f59e0b;
+/* On = blue accent, Off = red accent (the trigger's active state). */
+.canvas-trigger-badge.on {
+  border-color: #93c5fd;
+}
+
+.canvas-trigger-badge.on:hover {
+  border-color: #2563eb;
+}
+
+.canvas-trigger-badge.off {
+  border-color: #fca5a5;
+  opacity: 0.85;
+}
+
+.canvas-trigger-badge.off:hover {
+  border-color: #dc2626;
+}
+
+.canvas-trigger-badge-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.canvas-trigger-badge.on .canvas-trigger-badge-toggle {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.canvas-trigger-badge.off .canvas-trigger-badge-toggle {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.canvas-trigger-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.canvas-trigger-badge.on .canvas-trigger-badge-dot {
+  background: #2563eb;
+}
+
+.canvas-trigger-badge.off .canvas-trigger-badge-dot {
+  background: #dc2626;
 }
 
 .canvas-trigger-badge-icon {

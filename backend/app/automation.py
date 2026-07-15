@@ -57,6 +57,10 @@ def apply_trigger_nodes(
     config = trigger_nodes[0].config
     kind = config.get("trigger_kind")
     previous = existing or doc.automation
+    # A trigger can be turned off without being removed; when off the
+    # automation is derived but left disabled so it never fires. Missing
+    # flag means on (older triggers predate the toggle).
+    enabled = config.get("enabled", True) is not False
 
     if kind == "schedule":
         try:
@@ -66,7 +70,7 @@ def apply_trigger_nodes(
         cron = str(config.get("cron") or "").strip() or None
         timezone = str(config.get("timezone") or "").strip() or "UTC"
         doc.automation = AutomationConfig(
-            schedule_enabled=True,
+            schedule_enabled=enabled,
             interval_seconds=interval,
             schedule_cron=cron,
             schedule_timezone=timezone,
@@ -74,7 +78,7 @@ def apply_trigger_nodes(
         return True
     if kind == "webhook":
         doc.automation = AutomationConfig(
-            webhook_enabled=True,
+            webhook_enabled=enabled,
             webhook_token=previous.webhook_token or generate_webhook_token(),
             webhook_provider=config.get("webhook_provider") or "generic",
             webhook_secret=previous.webhook_secret,

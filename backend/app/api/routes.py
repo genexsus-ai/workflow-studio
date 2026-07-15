@@ -195,9 +195,12 @@ async def restore_workflow_version(workflow_id: str, version: str) -> WorkflowDo
 
 
 @router.delete("/workflows/{workflow_id}", status_code=204)
-def delete_workflow(workflow_id: str) -> None:
+async def delete_workflow(workflow_id: str) -> None:
     if not get_store().delete(workflow_id):
         raise HTTPException(status_code=404, detail="Workflow not found")
+    # Stop any running schedule immediately rather than waiting for the next
+    # tick to notice the workflow is gone.
+    await get_schedule_manager().disable(workflow_id)
 
 
 @router.post("/workflows/generate")

@@ -39,6 +39,7 @@ interface CanvasProps {
   onAddConnected: (sourceId: string, picked: PickedNode) => void
   onAddAttached: (agentId: string, port: 'model' | 'memory' | 'tools' | 'agents', picked: PickedNode) => void
   onDeleteNode: (nodeId: string) => void
+  onNodeConfigChange: (nodeId: string, config: Record<string, unknown>, label?: string) => void
 }
 
 // The trigger is a workflow-level automation declaration, not a flow step,
@@ -69,6 +70,7 @@ export function Canvas({
   onAddConnected,
   onAddAttached,
   onDeleteNode,
+  onNodeConfigChange,
 }: CanvasProps) {
   const { screenToFlowPosition } = useReactFlow()
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -156,39 +158,59 @@ export function Canvas({
           ⚡
         </button>
       )}
-      {triggerNode && (
-        <div
-          className="canvas-trigger-badge"
-          role="button"
-          tabIndex={0}
-          title="Edit trigger"
-          onClick={() => onSelectionChange({ nodes: [triggerNode], edges: [] })}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault()
-              onSelectionChange({ nodes: [triggerNode], edges: [] })
-            }
-          }}
-        >
-          <span className="canvas-trigger-badge-icon">⚡</span>
-          <span className="canvas-trigger-badge-text">
-            <span className="canvas-trigger-badge-label">{triggerNode.data.label}</span>
-            <span className="canvas-trigger-badge-sub">{triggerSubtitle(triggerNode.data.config)}</span>
-          </span>
-          <button
-            type="button"
-            className="canvas-trigger-badge-remove"
-            title="Remove trigger"
-            aria-label="Remove trigger"
-            onClick={(event) => {
-              event.stopPropagation()
-              onDeleteNode(triggerNode.id)
-            }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      {triggerNode &&
+        (() => {
+          const triggerOn = triggerNode.data.config.enabled !== false
+          return (
+            <div
+              className={`canvas-trigger-badge${triggerOn ? ' on' : ' off'}`}
+              role="button"
+              tabIndex={0}
+              title="Edit trigger"
+              onClick={() => onSelectionChange({ nodes: [triggerNode], edges: [] })}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onSelectionChange({ nodes: [triggerNode], edges: [] })
+                }
+              }}
+            >
+              <button
+                type="button"
+                className="canvas-trigger-badge-toggle"
+                title={triggerOn ? 'Trigger is on — click to turn off' : 'Trigger is off — click to turn on'}
+                aria-label={triggerOn ? 'Turn trigger off' : 'Turn trigger on'}
+                aria-pressed={triggerOn}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onNodeConfigChange(triggerNode.id, {
+                    ...triggerNode.data.config,
+                    enabled: !triggerOn,
+                  })
+                }}
+              >
+                <span className="canvas-trigger-badge-dot" />
+                {triggerOn ? 'On' : 'Off'}
+              </button>
+              <span className="canvas-trigger-badge-text">
+                <span className="canvas-trigger-badge-label">{triggerNode.data.label}</span>
+                <span className="canvas-trigger-badge-sub">{triggerSubtitle(triggerNode.data.config)}</span>
+              </span>
+              <button
+                type="button"
+                className="canvas-trigger-badge-remove"
+                title="Remove trigger"
+                aria-label="Remove trigger"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onDeleteNode(triggerNode.id)
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          )
+        })()}
       <button
         type="button"
         className="canvas-theme-toggle"

@@ -699,6 +699,7 @@ export default function App() {
             onSelectionChange={onSelectionChange}
             onDropNode={onDropNode}
             onDeleteNode={onDeleteNode}
+            onNodeConfigChange={onNodeConfigChange}
           />
           <div className="right-rail">
             <ConfigPanel
