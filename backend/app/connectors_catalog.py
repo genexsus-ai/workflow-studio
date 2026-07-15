@@ -21,6 +21,7 @@ from genxai.connectors import (
     PostgresConnector,
     S3Connector,
     SlackConnector,
+    WhatsAppConnector,
 )
 from genxai.tools.base import Tool, ToolCategory, ToolMetadata, ToolParameter
 
@@ -33,6 +34,7 @@ CONNECTOR_CLASSES: dict[str, type[Connector]] = {
     "google_workspace": GoogleWorkspaceConnector,
     "postgres": PostgresConnector,
     "s3": S3Connector,
+    "whatsapp": WhatsAppConnector,
 }
 
 CONNECTOR_CATALOG: list[dict[str, Any]] = [
@@ -87,6 +89,37 @@ CONNECTOR_CATALOG: list[dict[str, Any]] = [
             "list_channels": {
                 "description": "List channels",
                 "params": [{"name": "types", "required": False, "example": "public_channel"}],
+            },
+        },
+    },
+    {
+        "type": "whatsapp",
+        "label": "WhatsApp",
+        "icon": "🟢",
+        "color": "#25d366",
+        "credential_fields": [
+            {"name": "access_token", "secret": True},
+            {"name": "phone_number_id", "example": "123456789012345"},
+        ],
+        "actions": {
+            "send_message": {
+                "description": "Send a text message (24h customer-service window)",
+                "params": [
+                    {"name": "to", "required": True, "example": "15551234567"},
+                    {"name": "text", "required": True, "example": "Hello from GenXAI"},
+                ],
+            },
+            "send_template": {
+                "description": "Send an approved template (works outside the 24h window)",
+                "params": [
+                    {"name": "to", "required": True, "example": "15551234567"},
+                    {"name": "template", "required": True, "example": "hello_world"},
+                    {"name": "language", "required": False, "example": "en_US"},
+                ],
+            },
+            "mark_read": {
+                "description": "Mark an inbound message as read",
+                "params": [{"name": "message_id", "required": True}],
             },
         },
     },

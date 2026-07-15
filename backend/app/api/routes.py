@@ -454,6 +454,24 @@ async def update_automation(workflow_id: str, config: AutomationConfig) -> Workf
     return doc
 
 
+@router.get("/hooks/{token}")
+async def verify_webhook(token: str, request: Request):
+    """Webhook verification handshake (Meta/WhatsApp style).
+
+    Meta sends GET ?hub.mode=subscribe&hub.challenge=... before delivering
+    events and expects the challenge echoed back as plain text. The token in
+    the URL is the shared secret, so a resolvable token is proof enough.
+    """
+    from fastapi.responses import PlainTextResponse
+
+    if find_workflow_by_token(get_store(), token) is None:
+        raise HTTPException(status_code=404, detail="Unknown webhook token")
+    challenge = request.query_params.get("hub.challenge")
+    if request.query_params.get("hub.mode") == "subscribe" and challenge:
+        return PlainTextResponse(challenge)
+    return {"status": "ok"}
+
+
 @router.post("/hooks/{token}")
 async def fire_webhook(token: str, request: Request) -> dict:
     """Public fire-by-URL endpoint: runs the workflow bound to this token.
