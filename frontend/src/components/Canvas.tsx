@@ -86,6 +86,16 @@ export function Canvas({
     [screenToFlowPosition, onDropNode],
   )
 
+  // Drop the trigger into the top-left corner, just below the add buttons,
+  // so it lands where its ⚡ button was — a fixed "workflow settings" spot.
+  const addTriggerAtCorner = useCallback(() => {
+    const rect = wrapperRef.current?.getBoundingClientRect()
+    const position = rect
+      ? screenToFlowPosition({ x: rect.left + 16, y: rect.top + 60 })
+      : { x: 16, y: 60 }
+    onDropNode({ type: 'trigger' }, position)
+  }, [screenToFlowPosition, onDropNode])
+
   return (
     <div className={`canvas${dark ? ' dark' : ''}`} ref={wrapperRef}>
       <ConnectPickerContext.Provider value={setConnectFrom}>
@@ -126,7 +136,7 @@ export function Canvas({
           className="canvas-add-trigger"
           title="Add a schedule or webhook trigger"
           aria-label="Add trigger"
-          onClick={() => addAtCenter({ type: 'trigger' })}
+          onClick={addTriggerAtCorner}
         >
           ⚡
         </button>
