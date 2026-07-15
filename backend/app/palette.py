@@ -176,6 +176,12 @@ NODE_TYPE_DEFS: list[dict[str, Any]] = [
                 "required": False,
                 "placeholder": "issues.opened (GitHub webhooks only)",
             },
+            {
+                "name": "webhook_secret",
+                "type": "password",
+                "required": False,
+                "placeholder": "HMAC secret — same as in GitHub webhook settings",
+            },
         ],
     },
     {

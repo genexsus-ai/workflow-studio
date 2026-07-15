@@ -81,7 +81,7 @@ def apply_trigger_nodes(
             webhook_enabled=enabled,
             webhook_token=previous.webhook_token or generate_webhook_token(),
             webhook_provider=config.get("webhook_provider") or "generic",
-            webhook_secret=previous.webhook_secret,
+            webhook_secret=config.get("webhook_secret") or previous.webhook_secret,
             webhook_event_filter=config.get("webhook_event_filter") or None,
         )
         return True

@@ -102,15 +102,30 @@ export function ConfigPanel({
   const isTriggerFieldVisible = (field: ConfigField) => {
     if (node.data.nodeType !== 'trigger') return true
     const kind = (config.trigger_kind as string) ?? 'schedule'
+    const provider = (config.webhook_provider as string) ?? 'generic'
     const scheduleOnly = ['interval_seconds', 'cron', 'timezone']
-    const webhookOnly = ['webhook_provider', 'webhook_event_filter']
-    if (kind === 'webhook') return !scheduleOnly.includes(field.name)
-    return !webhookOnly.includes(field.name)
+    const githubOnly = ['webhook_event_filter', 'webhook_secret']
+    if (kind !== 'webhook') {
+      return !['webhook_provider', ...githubOnly].includes(field.name)
+    }
+    if (scheduleOnly.includes(field.name)) return false
+    // Signature secret and event filter only apply to signed GitHub webhooks.
+    if (githubOnly.includes(field.name)) return provider === 'github'
+    return true
   }
 
   const renderField = (field: ConfigField) => {
     const value = config[field.name] ?? field.default ?? ''
     switch (field.type) {
+      case 'password':
+        return (
+          <input
+            type="password"
+            value={String(value)}
+            placeholder={field.placeholder}
+            onChange={(event) => setValue(field.name, event.target.value)}
+          />
+        )
       case 'text':
         return (
           <textarea
