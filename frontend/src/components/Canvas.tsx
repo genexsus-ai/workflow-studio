@@ -118,6 +118,19 @@ export function Canvas({
           ＋
         </button>
       )}
+      {/* A workflow uses at most one trigger; offer a dedicated add for it
+          (a standalone automation declaration) only while none exists. */}
+      {nodes.length > 0 && !nodes.some((node) => node.data?.nodeType === 'trigger') && (
+        <button
+          type="button"
+          className="canvas-add-trigger"
+          title="Add a schedule or webhook trigger"
+          aria-label="Add trigger"
+          onClick={() => addAtCenter({ type: 'trigger' })}
+        >
+          ⚡
+        </button>
+      )}
       <button
         type="button"
         className="canvas-theme-toggle"

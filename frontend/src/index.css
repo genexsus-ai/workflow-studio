@@ -822,6 +822,29 @@ body {
   background: #f8fafc;
 }
 
+.canvas-add-trigger {
+  position: absolute;
+  top: 12px;
+  left: 56px;
+  z-index: 5;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #fcd34d;
+  border-radius: 50%;
+  background: #ffffff;
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+}
+
+.canvas-add-trigger:hover {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
 .canvas-theme-toggle {
   position: absolute;
   bottom: 12px;
