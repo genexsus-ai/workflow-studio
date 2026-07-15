@@ -2525,3 +2525,80 @@ button.danger {
   border-color: #fecaca;
   background: #fef2f2;
 }
+
+/* ============================================================ responsive
+   Desktop-first node editor; these breakpoints keep it usable on tablets
+   and phones without changing the desktop layout. */
+
+/* Tablet / small laptop: reclaim canvas width from the side panels. */
+@media (max-width: 1024px) {
+  .app-sidebar { width: 56px; }
+  .app-sidebar .app-sidebar-title,
+  .app-sidebar .app-sidebar-chevron,
+  .app-sidebar .app-sidebar-label,
+  .app-sidebar .app-sidebar-soon { display: none; }
+
+  .right-rail { width: 264px; }
+
+  .toolbar { flex-wrap: wrap; row-gap: 8px; }
+  .toolbar-actions { flex-wrap: wrap; }
+}
+
+/* Phone: stack the workspace vertically so the canvas and the config/run
+   rail each get full width instead of fighting over one row. */
+@media (max-width: 640px) {
+  .app-shell { flex-direction: column; height: auto; min-height: 100vh; }
+  .app { height: auto; min-height: 0; }
+
+  /* Sidebar becomes a horizontal strip of icons across the top. */
+  .app-sidebar {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    overflow-x: auto;
+  }
+  .app-sidebar-items { flex-direction: row; }
+  .app-sidebar-collapse { display: none; }
+
+  .workspace { flex-direction: column; }
+  .canvas { min-height: 60vh; }
+
+  /* Rail drops below the canvas, full width, its own scroll region. */
+  .right-rail {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid #e2e8f0;
+    max-height: 45vh;
+  }
+
+  .node-picker { width: 100%; }
+
+  /* Toolbar: let the name field and buttons wrap instead of overflowing. */
+  .toolbar { padding: 8px 12px; }
+  .workflow-name { flex: 1 1 100%; }
+  .toolbar-actions { margin-left: 0; width: 100%; }
+  .toolbar-actions select,
+  .toolbar-actions button { flex: 1 1 auto; }
+
+  /* Content views: tighten padding and stack the list beside the content. */
+  .insights { padding: 16px; }
+  .datasets { flex-direction: column; }
+  .datasets-list {
+    width: 100%;
+    max-width: none;
+    max-height: 40vh;
+    border-right: none;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  /* Dialogs already cap at 90vw; make sure inner fixed widths yield too. */
+  .add-source-dialog,
+  .generate-dialog,
+  .candidate-table table { width: 100%; max-width: calc(100vw - 24px); }
+}
+
+/* Coarse-pointer (touch) niceties regardless of width. */
+@media (pointer: coarse) {
+  .toolbar-actions select,
+  .toolbar-actions button { min-height: 40px; }
+}
