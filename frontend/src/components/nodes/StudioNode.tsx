@@ -117,10 +117,13 @@ export function StudioNode({ id, data, selected }: NodeProps<StudioNodeType>) {
         </div>
         {data.status === 'running' && <span className="studio-node-spinner" />}
       </div>
-      {!isCapability && data.nodeType !== 'output' && (
+      {/* Triggers declare automation (schedule/webhook); their outgoing
+          edges are dropped before execution, so they get no source handle
+          or add-connected button — the connection would be inert. */}
+      {!isCapability && data.nodeType !== 'output' && !isTrigger && (
         <Handle type="source" position={Position.Right} />
       )}
-      {!isCapability && data.nodeType !== 'output' && !hasOutgoing && (
+      {!isCapability && data.nodeType !== 'output' && !isTrigger && !hasOutgoing && (
         <button
           type="button"
           className="studio-node-add nodrag"
