@@ -698,6 +698,7 @@ export default function App() {
             onConnect={onConnect}
             onSelectionChange={onSelectionChange}
             onDropNode={onDropNode}
+            onDeleteNode={onDeleteNode}
           />
           <div className="right-rail">
             <ConfigPanel

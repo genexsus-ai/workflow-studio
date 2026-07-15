@@ -845,6 +845,91 @@ body {
   background: #fffbeb;
 }
 
+/* Pinned trigger badge: fixed to the canvas corner, does not pan/zoom. */
+.canvas-trigger-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  max-width: 260px;
+  border: 1px solid #fcd34d;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+}
+
+.canvas-trigger-badge:hover {
+  border-color: #f59e0b;
+}
+
+.canvas-trigger-badge-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: #fef3c7;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.canvas-trigger-badge-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.canvas-trigger-badge-label {
+  font-weight: 600;
+  font-size: 13px;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.canvas-trigger-badge-sub {
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.canvas-trigger-badge-remove {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.canvas-trigger-badge-remove:hover {
+  color: #dc2626;
+}
+
+.canvas.dark .canvas-trigger-badge {
+  background: #1e293b;
+  border-color: #b45309;
+}
+
+.canvas.dark .canvas-trigger-badge-label {
+  color: #f1f5f9;
+}
+
+.canvas.dark .canvas-trigger-badge-icon {
+  background: #78350f;
+}
+
 .canvas-theme-toggle {
   position: absolute;
   bottom: 12px;

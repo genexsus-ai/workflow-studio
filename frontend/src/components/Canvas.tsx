@@ -38,6 +38,18 @@ interface CanvasProps {
   onDropNode: (picked: PickedNode, position: { x: number; y: number }) => void
   onAddConnected: (sourceId: string, picked: PickedNode) => void
   onAddAttached: (agentId: string, port: 'model' | 'memory' | 'tools' | 'agents', picked: PickedNode) => void
+  onDeleteNode: (nodeId: string) => void
+}
+
+// The trigger is a workflow-level automation declaration, not a flow step,
+// so it renders as a fixed corner badge instead of a draggable node.
+function triggerSubtitle(config: Record<string, unknown>): string {
+  if (config.trigger_kind !== 'schedule') return 'webhook'
+  if (config.cron) {
+    const tz = config.timezone && config.timezone !== 'UTC' ? ` · ${String(config.timezone)}` : ''
+    return `cron ${String(config.cron)}${tz}`
+  }
+  return `every ${String(config.interval_seconds ?? 3600)}s`
 }
 
 export function Canvas({
@@ -56,9 +68,16 @@ export function Canvas({
   onDropNode,
   onAddConnected,
   onAddAttached,
+  onDeleteNode,
 }: CanvasProps) {
   const { screenToFlowPosition } = useReactFlow()
   const wrapperRef = useRef<HTMLDivElement>(null)
+  // The trigger renders as a pinned badge, not a flow node, so keep it out
+  // of what React Flow manages and draw it as a fixed overlay instead.
+  const triggerNode = nodes.find((node) => node.data?.nodeType === 'trigger')
+  const flowNodes = triggerNode
+    ? nodes.filter((node) => node.data?.nodeType !== 'trigger')
+    : nodes
   const [connectFrom, setConnectFrom] = useState<ConnectRequest | null>(null)
   const [freePickOpen, setFreePickOpen] = useState(false)
   const [dark, setDark] = useState(
@@ -86,22 +105,18 @@ export function Canvas({
     [screenToFlowPosition, onDropNode],
   )
 
-  // Drop the trigger into the top-left corner, just below the add buttons,
-  // so it lands where its ⚡ button was — a fixed "workflow settings" spot.
-  const addTriggerAtCorner = useCallback(() => {
-    const rect = wrapperRef.current?.getBoundingClientRect()
-    const position = rect
-      ? screenToFlowPosition({ x: rect.left + 16, y: rect.top + 60 })
-      : { x: 16, y: 60 }
-    onDropNode({ type: 'trigger' }, position)
-  }, [screenToFlowPosition, onDropNode])
+  // The trigger renders as a fixed corner badge, so its stored position is
+  // irrelevant — drop it at the origin.
+  const addTrigger = useCallback(() => {
+    onDropNode({ type: 'trigger' }, { x: 0, y: 0 })
+  }, [onDropNode])
 
   return (
     <div className={`canvas${dark ? ' dark' : ''}`} ref={wrapperRef}>
       <ConnectPickerContext.Provider value={setConnectFrom}>
       <ReactFlow
         colorMode={dark ? 'dark' : 'light'}
-        nodes={nodes}
+        nodes={flowNodes}
         edges={edges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
@@ -128,18 +143,51 @@ export function Canvas({
           ＋
         </button>
       )}
-      {/* A workflow uses at most one trigger; offer a dedicated add for it
-          (a standalone automation declaration) only while none exists. */}
-      {nodes.length > 0 && !nodes.some((node) => node.data?.nodeType === 'trigger') && (
+      {/* A workflow uses at most one trigger; show the add button only while
+          none exists, and the pinned badge once one does. */}
+      {nodes.length > 0 && !triggerNode && (
         <button
           type="button"
           className="canvas-add-trigger"
           title="Add a schedule or webhook trigger"
           aria-label="Add trigger"
-          onClick={addTriggerAtCorner}
+          onClick={addTrigger}
         >
           ⚡
         </button>
+      )}
+      {triggerNode && (
+        <div
+          className="canvas-trigger-badge"
+          role="button"
+          tabIndex={0}
+          title="Edit trigger"
+          onClick={() => onSelectionChange({ nodes: [triggerNode], edges: [] })}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              onSelectionChange({ nodes: [triggerNode], edges: [] })
+            }
+          }}
+        >
+          <span className="canvas-trigger-badge-icon">⚡</span>
+          <span className="canvas-trigger-badge-text">
+            <span className="canvas-trigger-badge-label">{triggerNode.data.label}</span>
+            <span className="canvas-trigger-badge-sub">{triggerSubtitle(triggerNode.data.config)}</span>
+          </span>
+          <button
+            type="button"
+            className="canvas-trigger-badge-remove"
+            title="Remove trigger"
+            aria-label="Remove trigger"
+            onClick={(event) => {
+              event.stopPropagation()
+              onDeleteNode(triggerNode.id)
+            }}
+          >
+            ✕
+          </button>
+        </div>
       )}
       <button
         type="button"
@@ -152,7 +200,9 @@ export function Canvas({
       </button>
       {freePickOpen && (
         <NodePicker
-          nodeDefs={nodeDefs}
+          nodeDefs={
+            triggerNode ? nodeDefs.filter((def) => def.type !== 'trigger') : nodeDefs
+          }
           connectors={connectors}
           agentPresets={agentPresets}
           tools={tools}
