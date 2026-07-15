@@ -2560,8 +2560,11 @@ button.danger {
   .app-sidebar-items { flex-direction: row; }
   .app-sidebar-collapse { display: none; }
 
+  /* Stacking breaks the flex height chain the canvas relied on, so give
+     React Flow an explicit height — a percentage/flex parent would
+     collapse its absolutely-positioned viewport to zero. */
   .workspace { flex-direction: column; }
-  .canvas { min-height: 60vh; }
+  .canvas { flex: none; height: 65vh; }
 
   /* Rail drops below the canvas, full width, its own scroll region. */
   .right-rail {
