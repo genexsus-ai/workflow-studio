@@ -97,6 +97,17 @@ export function ConfigPanel({
     onNodeConfigChange(node.id, { ...config, [name]: value })
   }
 
+  // A trigger is either a schedule or a webhook; hide the fields that don't
+  // apply to the selected kind (the backend ignores them anyway).
+  const isTriggerFieldVisible = (field: ConfigField) => {
+    if (node.data.nodeType !== 'trigger') return true
+    const kind = (config.trigger_kind as string) ?? 'schedule'
+    const scheduleOnly = ['interval_seconds', 'cron', 'timezone']
+    const webhookOnly = ['webhook_provider', 'webhook_event_filter']
+    if (kind === 'webhook') return !scheduleOnly.includes(field.name)
+    return !webhookOnly.includes(field.name)
+  }
+
   const renderField = (field: ConfigField) => {
     const value = config[field.name] ?? field.default ?? ''
     switch (field.type) {
@@ -370,7 +381,7 @@ export function ConfigPanel({
           onChange={(event) => onNodeConfigChange(node.id, config, event.target.value)}
         />
       </label>
-      {def?.config_fields.map((field) => (
+      {def?.config_fields.filter(isTriggerFieldVisible).map((field) => (
         <label className="field" key={field.name}>
           <span>
             {field.name}
