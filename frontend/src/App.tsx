@@ -751,6 +751,7 @@ export default function App() {
               automation={automation}
               workflows={workflows}
               onChange={onAutomationChange}
+              hasTrigger={nodes.some((node) => node.data.nodeType === 'trigger')}
               sharedMemory={sharedMemory}
               onSharedMemoryChange={(value) => {
                 setSharedMemory(value)

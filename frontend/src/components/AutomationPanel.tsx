@@ -10,6 +10,7 @@ interface AutomationPanelProps {
   onChange: (config: AutomationConfig) => Promise<void>
   sharedMemory: boolean
   onSharedMemoryChange: (value: boolean) => void
+  hasTrigger: boolean
 }
 
 export function AutomationPanel({
@@ -19,6 +20,7 @@ export function AutomationPanel({
   onChange,
   sharedMemory,
   onSharedMemoryChange,
+  hasTrigger,
 }: AutomationPanelProps) {
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -66,6 +68,15 @@ export function AutomationPanel({
 
       {sharedMemoryToggle}
 
+      {/* Schedule/webhook live on the trigger node when one exists — it is
+          authoritative, so avoid a second, conflicting source of truth. */}
+      {hasTrigger && (
+        <p className="config-subtitle">
+          Schedule &amp; webhook are set on the trigger node on the canvas.
+        </p>
+      )}
+
+      {!hasTrigger && (
       <label className="field field-checkbox">
         <input
           type="checkbox"
@@ -75,7 +86,8 @@ export function AutomationPanel({
         />
         <span>Webhook — run when this URL is called</span>
       </label>
-      {automation.webhook_enabled && (
+      )}
+      {!hasTrigger && automation.webhook_enabled && (
         <>
           <label className="field">
             <span>Provider</span>
@@ -135,6 +147,7 @@ export function AutomationPanel({
         </div>
       )}
 
+      {!hasTrigger && (
       <label className="field field-checkbox">
         <input
           type="checkbox"
@@ -144,7 +157,8 @@ export function AutomationPanel({
         />
         <span>Schedule — run automatically</span>
       </label>
-      {automation.schedule_enabled && (
+      )}
+      {!hasTrigger && automation.schedule_enabled && (
         <>
           <label className="field">
             <span>Cron expression (optional)</span>
