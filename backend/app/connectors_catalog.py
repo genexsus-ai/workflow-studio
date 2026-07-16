@@ -372,6 +372,18 @@ CONNECTOR_CATALOG: list[dict[str, Any]] = [
                     {"name": "max_results", "required": False, "example": 10},
                 ],
             },
+            "create_calendar_event": {
+                "description": "Create a calendar event (schedule a follow-up)",
+                "params": [
+                    {"name": "summary", "required": True, "example": "Follow-up call with lead"},
+                    {"name": "start", "required": True, "example": "2026-07-16T15:00:00"},
+                    {"name": "end", "required": False, "example": "defaults to start + 30 min"},
+                    {"name": "attendees", "required": False, "example": "agent@example.com"},
+                    {"name": "description", "required": False},
+                    {"name": "timezone", "required": False, "example": "UTC"},
+                    {"name": "calendar_id", "required": False, "example": "primary"},
+                ],
+            },
         },
     },
 ]
