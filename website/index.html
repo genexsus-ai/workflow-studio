@@ -163,6 +163,35 @@
     .arch-box .dim { color: #7d8ea6; }
     .arch-box .hl { color: #7fb0ff; }
 
+    /* genxai framework */
+    .genxai {
+      background: linear-gradient(155deg, #101a2e 0%, #1a2740 60%, #24334e 100%);
+      color: #e8eef7; position: relative; overflow: hidden;
+    }
+    .genxai::before {
+      content: "⚛"; position: absolute; right: -60px; top: -70px; font-size: 340px;
+      opacity: 0.05; pointer-events: none;
+    }
+    .genxai .kicker { color: #7fb0ff; }
+    .genxai h2 { color: #ffffff; }
+    .genxai .sub { color: #aebbd1; }
+    .genxai-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 38px; }
+    .genxai-card {
+      background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px; padding: 20px;
+    }
+    .genxai-card h3 { font-size: 15px; margin: 8px 0 5px; color: #ffffff; }
+    .genxai-card p { font-size: 13px; color: #aebbd1; }
+    .genxai-card .gi { font-size: 22px; }
+    .genxai-tag {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(127, 176, 255, 0.12); border: 1px solid rgba(127, 176, 255, 0.35);
+      color: #a9c8ff; border-radius: 999px; padding: 6px 14px;
+      font-size: 13px; font-weight: 600; margin-bottom: 18px;
+    }
+    @media (max-width: 900px) { .genxai-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 600px) { .genxai-grid { grid-template-columns: 1fr; } }
+
     /* cta + footer */
     .cta {
       background: linear-gradient(150deg, #0f172a, #2e3d54); color: #f1f5f9;
@@ -198,6 +227,7 @@
       <a class="hide-sm" href="#features">Features</a>
       <a class="hide-sm" href="#how">How it works</a>
       <a class="hide-sm" href="#integrations">Integrations</a>
+      <a class="hide-sm" href="#genxai">GenXAI Framework</a>
       <a class="btn btn-primary" href="https://app.genxflowstudio.com">Open the Studio</a>
     </div>
   </div>
@@ -217,7 +247,7 @@
         <a class="btn btn-primary" href="https://app.genxflowstudio.com">Try the live demo</a>
         <a class="btn btn-ghost" href="https://api.genxflowstudio.com/docs">Explore the API</a>
       </div>
-      <p class="hero-note">No sign-up needed — the demo is open. Your workflows run on the GenXAI engine.</p>
+      <p class="hero-note">No sign-up needed — the demo is open. Powered by <a href="#genxai" style="color:#7fb0ff">GenXAI</a>, a framework for multi-agent AI.</p>
     </div>
 
     <div class="canvas-mock" aria-hidden="true">
@@ -356,6 +386,46 @@
   </div>
 </section>
 
+<section class="genxai" id="genxai">
+  <div class="wrap">
+    <div class="genxai-tag">⚛ The engine underneath</div>
+    <div class="kicker">Powered by GenXAI</div>
+    <h2>A framework built for the multi-agent era</h2>
+    <p class="sub">
+      Flow Studio is the canvas — <strong style="color:#ffffff">GenXAI</strong> is the machine.
+      A production-grade framework for multi-agent AI where agents don't just answer:
+      they collaborate, remember, delegate, disagree and decide. Every workflow you
+      draw compiles onto its graph engine — the same engine you can drive from code.
+    </p>
+    <div class="genxai-grid">
+      <div class="genxai-card"><div class="gi">🕸️</div>
+        <h3>A true graph engine</h3>
+        <p>Conditional branches, parallel fan-out with real join semantics, loops, nested subworkflows, checkpoints and resume. Not a task queue — a living graph.</p></div>
+      <div class="genxai-card"><div class="gi">🤝</div>
+        <h3>Agents that work as a team</h3>
+        <p>Coordinator/workers, round-robin relays, map-reduce swarms, critic loops and voting councils — collaboration patterns you compose, not hard-code.</p></div>
+      <div class="genxai-card"><div class="gi">🧠</div>
+        <h3>Memory that survives</h3>
+        <p>Agents recall past runs, share a common memory bus mid-flight, and pick up conversations where they left off — days later.</p></div>
+      <div class="genxai-card"><div class="gi">🛠️</div>
+        <h3>Hands, not just words</h3>
+        <p>46 built-in tools, every connector action, and any MCP server — handed to agents so they can act mid-reasoning, with human gates where it matters.</p></div>
+      <div class="genxai-card"><div class="gi">⏰</div>
+        <h3>Wakes itself up</h3>
+        <p>Cron and interval schedules, signed webhooks, event triggers — workflows that run because the world changed, not because someone clicked.</p></div>
+      <div class="genxai-card"><div class="gi">🔭</div>
+        <h3>Observable by default</h3>
+        <p>Every workflow, node, agent and tool call is metered — Prometheus metrics out of the box, run history down to per-node timings.</p></div>
+      <div class="genxai-card"><div class="gi">🐍</div>
+        <h3>Python-native</h3>
+        <p>Everything the canvas does is a library call away. Define agents in code, run workflows from YAML, or mix both — the studio and the SDK share one engine.</p></div>
+      <div class="genxai-card"><div class="gi">🚀</div>
+        <h3>Yours to run</h3>
+        <p>Self-hosted, container-ready, Kubernetes-friendly. Your models, your data, your infrastructure — the framework scales from a laptop to a cluster.</p></div>
+    </div>
+  </div>
+</section>
+
 <div class="cta">
   <div class="wrap">
     <h2>See it running in two minutes</h2>
@@ -366,7 +436,7 @@
 
 <footer>
   <div class="wrap foot">
-    <span>⚛ GenXAI Flow Studio</span>
+    <span>⚛ GenXAI Flow Studio — powered by the GenXAI multi-agent framework</span>
     <a href="https://app.genxflowstudio.com">Live demo</a>
     <a href="https://api.genxflowstudio.com/docs">API docs</a>
     <span class="spacer"></span>
