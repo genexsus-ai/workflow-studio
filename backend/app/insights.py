@@ -141,8 +141,25 @@ def compute_insights(days: int = 14) -> dict[str, Any]:
         reverse=True,
     )[:10]
 
+    # Latest runs, newest first — the live-activity feed
+    def _started_key(record: Any) -> datetime:
+        return _parse_when(record.started_at) or cutoff
+
+    recent = [
+        {
+            "run_id": record.run_id,
+            "workflow": record.workflow,
+            "status": record.status,
+            "trigger": _normalize_trigger((record.metadata or {}).get("trigger")),
+            "started_at": record.started_at,
+            "duration_ms": _duration_ms(record),
+        }
+        for record in sorted(records, key=_started_key, reverse=True)[:12]
+    ]
+
     return {
         "days": days,
+        "recent": recent,
         "totals": {
             "runs": len(records),
             "succeeded": succeeded,

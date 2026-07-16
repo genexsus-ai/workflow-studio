@@ -251,8 +251,18 @@ export interface InsightsWorkflow {
   last_run_at: string | null
 }
 
+export interface InsightsRecentRun {
+  run_id: string
+  workflow: string
+  status: string
+  trigger: string
+  started_at: string
+  duration_ms: number | null
+}
+
 export interface InsightsData {
   days: number
+  recent: InsightsRecentRun[]
   totals: {
     runs: number
     succeeded: number

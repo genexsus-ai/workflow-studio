@@ -17,6 +17,18 @@ function formatDuration(ms: number | null | undefined): string {
   return `${(ms / 60_000).toFixed(1)}m`
 }
 
+const LIVE_POLL_MS = 10_000
+
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return '—'
+  const seconds = Math.max(0, Math.round((Date.now() - then) / 1000))
+  if (seconds < 60) return `${seconds} sec ago`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`
+  if (seconds < 86_400) return `${Math.floor(seconds / 3600)} hr ago`
+  return `${Math.floor(seconds / 86_400)} d ago`
+}
+
 export function InsightsView() {
   const [days, setDays] = useState(14)
   const [data, setData] = useState<InsightsData | null>(null)
@@ -32,6 +44,12 @@ export function InsightsView() {
   }, [days])
 
   useEffect(refresh, [refresh])
+
+  // Live mode: keep the dashboard current while it's open
+  useEffect(() => {
+    const timer = setInterval(refresh, LIVE_POLL_MS)
+    return () => clearInterval(timer)
+  }, [refresh])
 
   if (error) {
     return (
@@ -49,6 +67,9 @@ export function InsightsView() {
       <div className="insights-header">
         <h1>Insights</h1>
         <div className="insights-filters">
+          <span className="live-indicator" title={`Auto-refreshes every ${LIVE_POLL_MS / 1000}s`}>
+            <i className="live-dot" /> Live
+          </span>
           <select value={days} onChange={(event) => setDays(Number(event.target.value))}>
             <option value={7}>Last 7 days</option>
             <option value={14}>Last 14 days</option>
@@ -82,6 +103,40 @@ export function InsightsView() {
       </section>
 
       <div className="insights-columns">
+        <section className="insights-card">
+          <h2>Live activity</h2>
+          {(data.recent ?? []).length === 0 ? (
+            <p className="config-subtitle">No runs in this period.</p>
+          ) : (
+            <ul className="activity-feed">
+              {(data.recent ?? []).map((run) => (
+                <li key={run.run_id} className="activity-item">
+                  <i
+                    className="activity-dot"
+                    style={{
+                      background:
+                        run.status === 'success'
+                          ? STATUS_GOOD
+                          : run.status === 'running' || run.status === 'queued'
+                            ? SEQUENTIAL_BLUE
+                            : STATUS_CRITICAL,
+                    }}
+                    title={run.status}
+                  />
+                  <span className="activity-text">
+                    <span className="activity-title truncate">{run.workflow}</span>
+                    <span className="activity-sub">
+                      {run.status} · {run.trigger}
+                      {run.duration_ms != null ? ` · ${formatDuration(run.duration_ms)}` : ''}
+                    </span>
+                  </span>
+                  <span className="activity-when">{relativeTime(run.started_at)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
         <section className="insights-card">
           <h2>By trigger</h2>
           {data.triggers.length === 0 ? (
