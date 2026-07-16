@@ -52,6 +52,8 @@ def use_postgres() -> bool:
                     conn.execute(sa.text("select 1"))
                 _use_pg = True
             except Exception:
+                if settings.persistence_strict:
+                    raise
                 logger.exception(
                     "PERSISTENCE_BACKEND=postgres but the database is "
                     "unreachable — falling back to SQLite for studio data"

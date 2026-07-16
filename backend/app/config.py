@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     # "postgres" stores them in the database named by database_url.
     persistence_backend: str = "files"
     database_url: str | None = None
+    # Strict mode (set in deployments): if the database is unreachable,
+    # fail instead of silently falling back to file persistence — a pod
+    # that "works" but writes to its ephemeral filesystem loses data on
+    # every redeploy. Local dev keeps the friendly fallback.
+    persistence_strict: bool = False
 
     @property
     def sync_database_url(self) -> str | None:

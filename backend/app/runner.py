@@ -29,6 +29,8 @@ def get_execution_store() -> ExecutionStore:
             try:
                 _execution_store = StudioExecutionStore(settings.sync_database_url)
             except Exception:
+                if settings.persistence_strict:
+                    raise
                 logger.exception(
                     "PERSISTENCE_BACKEND=postgres but the database is "
                     "unreachable — falling back to file persistence for runs"

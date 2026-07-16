@@ -3,6 +3,7 @@
 # Secrets are created imperatively (never committed):
 #   kubectl -n genxflowstudio create secret generic backend-env \
 #     --from-literal=PERSISTENCE_BACKEND=postgres \
+#     --from-literal=PERSISTENCE_STRICT=true \
 #     --from-literal=DATABASE_URL='postgresql+asyncpg://…' \
 #     --from-literal=OPENAI_API_KEY='…' \
 #     --from-literal=STUDIO_API_TOKEN='…' \

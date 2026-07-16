@@ -79,6 +79,8 @@ def get_store() -> WorkflowStore | DbWorkflowStore:
             try:
                 _store = DbWorkflowStore(settings.sync_database_url)
             except Exception:
+                if settings.persistence_strict:
+                    raise
                 logging.getLogger(__name__).exception(
                     "PERSISTENCE_BACKEND=postgres but the database is "
                     "unreachable — falling back to file persistence"
