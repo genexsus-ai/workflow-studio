@@ -221,9 +221,13 @@ export function InsightsView() {
         )}
       </section>
 
-      {feedback.length > 0 && (
-        <section className="insights-card">
-          <h2>Recent feedback</h2>
+      <section className="insights-card">
+        <h2>Recent feedback</h2>
+        {feedback.length === 0 ? (
+          <p className="config-subtitle">
+            No feedback yet — submissions from the 💬 Feedback button appear here.
+          </p>
+        ) : (
           <ul className="feedback-list">
             {feedback.slice(0, 20).map((item) => (
               <li key={item.id} className="feedback-item">
@@ -240,8 +244,8 @@ export function InsightsView() {
               </li>
             ))}
           </ul>
-        </section>
-      )}
+        )}
+      </section>
     </div>
   )
 }
