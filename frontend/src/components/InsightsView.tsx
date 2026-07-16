@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { getInsights } from '../api'
-import type { InsightsData, InsightsDaily } from '../types'
+import { getInsights, listFeedback } from '../api'
+import type { FeedbackEntry, InsightsData, InsightsDaily } from '../types'
 
 // Status colors (validated against the app surface #f8fafc: contrast >= 3:1,
 // CVD dE 12.4) — state, not series identity, so they come from the status
@@ -32,6 +32,7 @@ function relativeTime(iso: string): string {
 export function InsightsView() {
   const [days, setDays] = useState(14)
   const [data, setData] = useState<InsightsData | null>(null)
+  const [feedback, setFeedback] = useState<FeedbackEntry[]>([])
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(() => {
@@ -41,6 +42,11 @@ export function InsightsView() {
         setError(null)
       })
       .catch((err) => setError((err as Error).message))
+    // Admin-only; ignore failures (e.g. missing token) so the dashboard
+    // still renders for non-admins.
+    listFeedback()
+      .then(setFeedback)
+      .catch(() => setFeedback([]))
   }, [days])
 
   useEffect(refresh, [refresh])
@@ -214,6 +220,28 @@ export function InsightsView() {
           </table>
         )}
       </section>
+
+      {feedback.length > 0 && (
+        <section className="insights-card">
+          <h2>Recent feedback</h2>
+          <ul className="feedback-list">
+            {feedback.slice(0, 20).map((item) => (
+              <li key={item.id} className="feedback-item">
+                <div className="feedback-item-head">
+                  <span className={`feedback-tag feedback-tag-${item.category ?? 'general'}`}>
+                    {item.category ?? 'general'}
+                  </span>
+                  <span className="feedback-item-meta">
+                    {item.email ?? 'anonymous'} · {relativeTime(item.created_at)}
+                    {item.emailed ? ' · emailed ✓' : ''}
+                  </span>
+                </div>
+                <p className="feedback-item-msg">{item.message}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   )
 }

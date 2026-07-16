@@ -7,6 +7,7 @@ import type {
   DatasetAnalysis,
   DatasetRowsPage,
   DatasetSummary,
+  FeedbackEntry,
   InsightsData,
   RunRecord,
   SourceColumn,
@@ -83,6 +84,9 @@ export const submitFeedback = (payload: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   }).then((r) => json<{ status: string; emailed: boolean }>(r))
+
+export const listFeedback = () =>
+  fetch(`${API}/feedback`).then((r) => json<FeedbackEntry[]>(r))
 
 export const listWorkflows = () =>
   fetch(`${API}/workflows`).then((r) => json<WorkflowSummary[]>(r))

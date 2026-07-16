@@ -251,6 +251,16 @@ export interface InsightsWorkflow {
   last_run_at: string | null
 }
 
+export interface FeedbackEntry {
+  id: string
+  created_at: string
+  message: string
+  email: string | null
+  category: string | null
+  page: string | null
+  emailed: boolean
+}
+
 export interface InsightsRecentRun {
   run_id: string
   workflow: string
