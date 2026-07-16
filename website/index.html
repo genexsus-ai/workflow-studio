@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GenXAI Flow Studio — Build AI agent workflows visually</title>
+  <meta name="description" content="A visual, no-code studio for AI agent workflows: drag agents, tools and connectors onto a canvas, wire them together, and automate with schedules, webhooks and human-in-the-loop gates." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚛</text></svg>" />
+  <style>
+    :root {
+      --ink: #0f172a;
+      --slate: #2e3d54;
+      --blue: #2563eb;
+      --blue-dark: #1d4ed8;
+      --surface: #f8fafc;
+      --line: #e2e8f0;
+      --muted: #64748b;
+      --good: #16a34a;
+      --amber: #f59e0b;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--ink);
+      background: #ffffff;
+      line-height: 1.6;
+    }
+    a { color: var(--blue); text-decoration: none; }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+    /* ------------------------------------------------------------- nav */
+    nav {
+      position: sticky; top: 0; z-index: 20;
+      background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(8px);
+      color: #f1f5f9;
+    }
+    .nav-inner { display: flex; align-items: center; gap: 28px; height: 60px; }
+    .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 17px; color: #f1f5f9; }
+    .brand span.logo { font-size: 22px; }
+    .nav-links { display: flex; gap: 22px; margin-left: auto; align-items: center; }
+    .nav-links a { color: #cbd5e1; font-size: 14px; font-weight: 500; }
+    .nav-links a:hover { color: #ffffff; }
+    .btn {
+      display: inline-block; padding: 9px 18px; border-radius: 8px;
+      font-weight: 600; font-size: 14px; transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+    .btn-primary { background: var(--blue); color: #ffffff !important; }
+    .btn-primary:hover { background: var(--blue-dark); transform: translateY(-1px); }
+    .btn-ghost { border: 1px solid #475569; color: #e2e8f0 !important; }
+    .btn-ghost:hover { border-color: #94a3b8; }
+
+    /* ------------------------------------------------------------ hero */
+    header {
+      background: linear-gradient(160deg, #0f172a 0%, #1e2c44 55%, #2e3d54 100%);
+      color: #f1f5f9; padding: 84px 0 96px; overflow: hidden;
+    }
+    .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; }
+    .hero h1 { font-size: 46px; line-height: 1.12; letter-spacing: -0.02em; }
+    .hero h1 em { font-style: normal; color: #7fb0ff; }
+    .hero p.lede { margin: 20px 0 30px; font-size: 18px; color: #b6c2d6; max-width: 520px; }
+    .hero-ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+    .hero-note { margin-top: 18px; font-size: 13px; color: #8fa0b8; }
+
+    /* CSS canvas mockup */
+    .canvas-mock {
+      background: #f6f8fb;
+      background-image: radial-gradient(#c8d2e0 1px, transparent 1px);
+      background-size: 18px 18px;
+      border-radius: 14px; padding: 26px 22px;
+      box-shadow: 0 24px 60px rgba(2, 8, 23, 0.45);
+      color: var(--ink); font-size: 12px; position: relative;
+    }
+    .mock-row { display: flex; align-items: center; gap: 8px; margin-bottom: 26px; }
+    .mock-node {
+      background: #ffffff; border: 1px solid var(--line); border-radius: 10px;
+      padding: 8px 12px; display: flex; align-items: center; gap: 8px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08); white-space: nowrap;
+    }
+    .mock-node .ic {
+      width: 24px; height: 24px; border-radius: 7px; display: flex;
+      align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0;
+    }
+    .mock-node b { font-size: 12px; font-weight: 600; }
+    .mock-node small { display: block; color: var(--muted); font-size: 10px; line-height: 1.2; }
+    .mock-edge { flex: 0 0 22px; height: 2px; background: #94a3b8; border-radius: 2px; position: relative; }
+    .mock-edge::after {
+      content: ""; position: absolute; right: -1px; top: -3px;
+      border: 4px solid transparent; border-left-color: #94a3b8;
+    }
+    .mock-trigger {
+      border-color: #93c5fd;
+    }
+    .mock-trigger .pill {
+      display: inline-flex; align-items: center; gap: 4px; background: #dbeafe; color: #1d4ed8;
+      border-radius: 999px; padding: 1px 7px; font-size: 10px; font-weight: 700;
+    }
+    .mock-trigger .pill i { width: 6px; height: 6px; border-radius: 50%; background: #2563eb; }
+    .mock-ports { display: flex; gap: 10px; justify-content: center; margin-top: -12px; margin-bottom: 22px; padding-left: 130px; }
+    .mock-port {
+      background: #ffffff; border: 1px dashed #c2cddd; border-radius: 9px;
+      padding: 5px 10px; font-size: 10.5px; color: var(--muted);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .mock-branch { display: flex; gap: 8px; align-items: center; padding-left: 46px; }
+    .mock-cond { font-size: 9.5px; color: var(--good); font-weight: 700; margin: 0 2px; }
+    .mock-live {
+      position: absolute; top: 12px; right: 14px; display: flex; align-items: center; gap: 5px;
+      font-size: 10.5px; font-weight: 700; color: var(--good);
+    }
+    .mock-live i { width: 7px; height: 7px; border-radius: 50%; background: var(--good); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* -------------------------------------------------------- sections */
+    section { padding: 78px 0; }
+    section.alt { background: var(--surface); }
+    .kicker { color: var(--blue); font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; }
+    h2 { font-size: 32px; letter-spacing: -0.01em; margin: 8px 0 10px; }
+    .sub { color: var(--muted); font-size: 16.5px; max-width: 640px; }
+
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 40px; }
+    .card {
+      background: #ffffff; border: 1px solid var(--line); border-radius: 14px; padding: 24px;
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+    .card:hover { transform: translateY(-3px); box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08); }
+    .card .ic {
+      width: 42px; height: 42px; border-radius: 11px; display: flex; align-items: center;
+      justify-content: center; font-size: 21px; margin-bottom: 14px;
+    }
+    .card h3 { font-size: 17px; margin-bottom: 6px; }
+    .card p { font-size: 14px; color: var(--muted); }
+
+    /* how it works */
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 40px; }
+    .step { position: relative; background: #ffffff; border: 1px solid var(--line); border-radius: 14px; padding: 26px 24px 24px; }
+    .step .num {
+      position: absolute; top: -16px; left: 22px; width: 32px; height: 32px; border-radius: 50%;
+      background: var(--blue); color: #ffffff; font-weight: 700; display: flex;
+      align-items: center; justify-content: center; font-size: 15px;
+    }
+    .step h3 { font-size: 17px; margin: 6px 0; }
+    .step p { font-size: 14px; color: var(--muted); }
+
+    /* integrations */
+    .logos { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
+    .logo-chip {
+      display: flex; align-items: center; gap: 9px; background: #ffffff;
+      border: 1px solid var(--line); border-radius: 999px; padding: 9px 18px;
+      font-weight: 600; font-size: 14px;
+    }
+    .logo-chip span { font-size: 17px; }
+    .logos-note { margin-top: 18px; font-size: 13.5px; color: var(--muted); }
+
+    /* architecture */
+    .arch { display: grid; grid-template-columns: 1fr 1fr; gap: 44px; align-items: center; }
+    .arch ul { list-style: none; margin-top: 18px; }
+    .arch li { padding: 9px 0 9px 30px; position: relative; font-size: 15px; }
+    .arch li::before { content: "✓"; position: absolute; left: 0; color: var(--good); font-weight: 700; }
+    .arch-box {
+      background: var(--ink); color: #dbe5f1; border-radius: 14px; padding: 26px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.9;
+    }
+    .arch-box .dim { color: #7d8ea6; }
+    .arch-box .hl { color: #7fb0ff; }
+
+    /* cta + footer */
+    .cta {
+      background: linear-gradient(150deg, #0f172a, #2e3d54); color: #f1f5f9;
+      text-align: center; padding: 84px 0;
+    }
+    .cta h2 { font-size: 34px; }
+    .cta p { color: #b6c2d6; margin: 12px auto 28px; max-width: 520px; }
+    footer { background: var(--ink); color: #8fa0b8; padding: 28px 0; font-size: 13.5px; }
+    .foot { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+    .foot a { color: #b6c2d6; }
+    .foot .spacer { margin-left: auto; }
+
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: 1fr; }
+      .hero h1 { font-size: 34px; }
+      .grid, .steps { grid-template-columns: 1fr 1fr; }
+      .arch { grid-template-columns: 1fr; }
+      .nav-links a.hide-sm { display: none; }
+    }
+    @media (max-width: 600px) {
+      .grid, .steps { grid-template-columns: 1fr; }
+      .canvas-mock { display: none; }
+      section { padding: 56px 0; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap nav-inner">
+    <div class="brand"><span class="logo">⚛</span> GenXAI Flow Studio</div>
+    <div class="nav-links">
+      <a class="hide-sm" href="#features">Features</a>
+      <a class="hide-sm" href="#how">How it works</a>
+      <a class="hide-sm" href="#integrations">Integrations</a>
+      <a class="btn btn-primary" href="https://app.genxflowstudio.com">Open the Studio</a>
+    </div>
+  </div>
+</nav>
+
+<header>
+  <div class="wrap hero">
+    <div>
+      <h1>Build AI agent workflows <em>visually</em>. Run them anywhere.</h1>
+      <p class="lede">
+        Drag agents, tools and connectors onto a canvas, wire them together,
+        and watch every node execute live. Automate with schedules and
+        webhooks, keep humans in the loop, and analyze everything your
+        workflows produce — all in one studio.
+      </p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="https://app.genxflowstudio.com">Try the live demo</a>
+        <a class="btn btn-ghost" href="https://api.genxflowstudio.com/docs">Explore the API</a>
+      </div>
+      <p class="hero-note">No sign-up needed — the demo is open. Your workflows run on the GenXAI engine.</p>
+    </div>
+
+    <div class="canvas-mock" aria-hidden="true">
+      <div class="mock-live"><i></i> Live</div>
+      <div class="mock-row">
+        <div class="mock-node mock-trigger">
+          <span class="pill"><i></i>On</span>
+          <span>⚡ <b>Trigger</b><small>webhook · WhatsApp</small></span>
+        </div>
+        <div class="mock-edge"></div>
+        <div class="mock-node"><span class="ic" style="background:#e0f2fe">📥</span><span><b>Message received</b><small>input</small></span></div>
+        <div class="mock-edge"></div>
+        <div class="mock-node"><span class="ic" style="background:#ede9fe">🤖</span><span><b>AI Agent</b><small>qualify the lead</small></span></div>
+        <div class="mock-edge"></div>
+        <div class="mock-node"><span class="ic" style="background:#fef9c3">🔀</span><span><b>Qualified?</b><small>decision</small></span></div>
+      </div>
+      <div class="mock-ports">
+        <div class="mock-port">◇ Chat Model</div>
+        <div class="mock-port">◇ Memory</div>
+        <div class="mock-port">◇ Tools</div>
+      </div>
+      <div class="mock-branch">
+        <span class="mock-cond">✓ qualified</span>
+        <div class="mock-node"><span class="ic" style="background:#dcfce7">🟢</span><span><b>WhatsApp reply</b><small>send_message</small></span></div>
+        <div class="mock-edge"></div>
+        <div class="mock-node"><span class="ic" style="background:#ffe4d5">🧲</span><span><b>HubSpot</b><small>upsert contact</small></span></div>
+        <div class="mock-edge"></div>
+        <div class="mock-node"><span class="ic" style="background:#dbeafe">📅</span><span><b>Follow-up</b><small>calendar event</small></span></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <div class="kicker">Everything in one studio</div>
+    <h2>From first draft to production automation</h2>
+    <p class="sub">
+      Flow Studio pairs an n8n-style visual builder with real AI agents,
+      durable data, and the operational tooling to run workflows for real.
+    </p>
+    <div class="grid">
+      <div class="card"><div class="ic" style="background:#ede9fe">🧩</div>
+        <h3>Visual workflow canvas</h3>
+        <p>Drag & wire inputs, agents, tools, decisions, loops and subworkflows. Live per-node status streams onto the canvas as runs execute.</p></div>
+      <div class="card"><div class="ic" style="background:#e0f2fe">🤖</div>
+        <h3>Agents with capability ports</h3>
+        <p>Attach a Chat Model, persistent Memory, and any tools to an agent's ports — the LLM calls them mid-reasoning. Team patterns wire multi-agent collaboration.</p></div>
+      <div class="card"><div class="ic" style="background:#fef3c7">✨</div>
+        <h3>Describe it, get a workflow</h3>
+        <p>Type what you want — the studio's generator drafts the whole workflow on the canvas, and can refine the one you're editing.</p></div>
+      <div class="card"><div class="ic" style="background:#dbeafe">⚡</div>
+        <h3>Triggers & automation</h3>
+        <p>Run on a schedule (intervals or cron with timezones) or fire from webhooks — including signed GitHub events and WhatsApp Business messages. Toggle triggers on/off with one click.</p></div>
+      <div class="card"><div class="ic" style="background:#fee2e2">🙋</div>
+        <h3>Humans in the loop</h3>
+        <p>Approval gates pause a run until someone responds. Expressive branch conditions route on any node's output. Failed runs retry from the failed node.</p></div>
+      <div class="card"><div class="ic" style="background:#dcfce7">🔌</div>
+        <h3>Connectors, tools & MCP</h3>
+        <p>Ten built-in connectors, 46 agent tools, and any Model Context Protocol server — every connector action doubles as an agent tool.</p></div>
+      <div class="card"><div class="ic" style="background:#fce7f3">📊</div>
+        <h3>Datasets & analytics</h3>
+        <p>Workflows accumulate rows into durable datasets. Query federated sources, and let agents build dashboard reports — charts plus narrative, downloadable as HTML.</p></div>
+      <div class="card"><div class="ic" style="background:#ecfccb">🧪</div>
+        <h3>A data-science crew</h3>
+        <p>State an objective and a multi-agent pipeline plans, explores, cleans, engineers features, trains models and reports — with code review and optional human gates at every stage.</p></div>
+      <div class="card"><div class="ic" style="background:#e0e7ff">📈</div>
+        <h3>Live operations dashboard</h3>
+        <p>KPIs, runs-per-day, trigger breakdowns, slowest nodes and a live activity feed — auto-refreshing while your automations run.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="how">
+  <div class="wrap">
+    <div class="kicker">How it works</div>
+    <h2>Three steps to a running automation</h2>
+    <div class="steps">
+      <div class="step"><div class="num">1</div>
+        <h3>Compose on the canvas</h3>
+        <p>Drag nodes from the palette — or describe the workflow and let the generator draft it. Configure each node in the inspector; pass data between nodes with <code>{{ }}</code> expressions.</p></div>
+      <div class="step"><div class="num">2</div>
+        <h3>Run it live</h3>
+        <p>Hit Run and watch every node light up with streamed status. Click any node to inspect its output. Versions snapshot on every save, restorable anytime.</p></div>
+      <div class="step"><div class="num">3</div>
+        <h3>Automate & observe</h3>
+        <p>Add a trigger — schedule or webhook — and the workflow runs itself. Track everything in the ops dashboard, and route failures to an error-handler workflow.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="integrations">
+  <div class="wrap">
+    <div class="kicker">Integrations</div>
+    <h2>Speaks to the tools you already use</h2>
+    <div class="logos">
+      <div class="logo-chip"><span>🟢</span>WhatsApp</div>
+      <div class="logo-chip"><span>🧲</span>HubSpot</div>
+      <div class="logo-chip"><span>💬</span>Slack</div>
+      <div class="logo-chip"><span>✉️</span>Email</div>
+      <div class="logo-chip"><span>🗓️</span>Google Workspace</div>
+      <div class="logo-chip"><span>🐙</span>GitHub</div>
+      <div class="logo-chip"><span>📋</span>Jira</div>
+      <div class="logo-chip"><span>📝</span>Notion</div>
+      <div class="logo-chip"><span>🐘</span>PostgreSQL</div>
+      <div class="logo-chip"><span>🪣</span>AWS S3</div>
+    </div>
+    <p class="logos-note">
+      Plus 46 built-in agent tools (HTTP, web scraping, PDF/CSV/JSON processing,
+      SQL, vector search, code execution, …) and any MCP server you register.
+    </p>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap arch">
+    <div>
+      <div class="kicker">Own your stack</div>
+      <h2>Self-hosted, API-first</h2>
+      <ul>
+        <li>FastAPI backend with a full REST API — everything the UI does, you can script</li>
+        <li>PostgreSQL persistence for workflows, versions, runs and datasets</li>
+        <li>Runs on your infrastructure — a single container, Kubernetes-ready</li>
+        <li>Powered by the open GenXAI agent framework: graph engine, teams, memory, observability</li>
+        <li>Import & export workflows as YAML</li>
+      </ul>
+    </div>
+    <div class="arch-box">
+      <div><span class="dim">$</span> curl -X POST <span class="hl">api.genxflowstudio.com</span>/api/v1/hooks/&lt;token&gt; \</div>
+      <div>&nbsp;&nbsp;-d '{"lead": "Jane · budget 250k · downtown"}'</div>
+      <div class="dim">→ {"status": "accepted", "run_id": "…"}</div>
+      <div>&nbsp;</div>
+      <div><span class="dim"># the workflow qualifies the lead, replies on</span></div>
+      <div><span class="dim"># WhatsApp, upserts the CRM, books a follow-up</span></div>
+    </div>
+  </div>
+</section>
+
+<div class="cta">
+  <div class="wrap">
+    <h2>See it running in two minutes</h2>
+    <p>The public demo ships with example workflows — chained tools, agent teams, approval gates, dataset collection. Open one and press Run.</p>
+    <a class="btn btn-primary" href="https://app.genxflowstudio.com" style="font-size:16px; padding: 12px 26px;">Open the Studio →</a>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap foot">
+    <span>⚛ GenXAI Flow Studio</span>
+    <a href="https://app.genxflowstudio.com">Live demo</a>
+    <a href="https://api.genxflowstudio.com/docs">API docs</a>
+    <span class="spacer"></span>
+    <a href="mailto:support@genxtrim.com">support@genxtrim.com</a>
+  </div>
+</footer>
+
+</body>
+</html>
