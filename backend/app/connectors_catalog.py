@@ -16,6 +16,7 @@ from genxai.connectors import (
     EmailConnector,
     GitHubConnector,
     GoogleWorkspaceConnector,
+    HubSpotConnector,
     JiraConnector,
     NotionConnector,
     PostgresConnector,
@@ -35,6 +36,7 @@ CONNECTOR_CLASSES: dict[str, type[Connector]] = {
     "postgres": PostgresConnector,
     "s3": S3Connector,
     "whatsapp": WhatsAppConnector,
+    "hubspot": HubSpotConnector,
 }
 
 CONNECTOR_CATALOG: list[dict[str, Any]] = [
@@ -120,6 +122,46 @@ CONNECTOR_CATALOG: list[dict[str, Any]] = [
             "mark_read": {
                 "description": "Mark an inbound message as read",
                 "params": [{"name": "message_id", "required": True}],
+            },
+        },
+    },
+    {
+        "type": "hubspot",
+        "label": "HubSpot",
+        "icon": "🧲",
+        "color": "#ff7a59",
+        "credential_fields": [
+            {"name": "access_token", "secret": True},
+        ],
+        "actions": {
+            "create_or_update_contact": {
+                "description": "Upsert a contact by email",
+                "params": [
+                    {"name": "email", "required": True, "example": "lead@example.com"},
+                    {"name": "firstname", "required": False},
+                    {"name": "lastname", "required": False},
+                    {"name": "phone", "required": False},
+                ],
+            },
+            "search_contacts": {
+                "description": "Free-text search over contacts",
+                "params": [
+                    {"name": "query", "required": True, "example": "jane"},
+                    {"name": "limit", "required": False, "example": 10},
+                ],
+            },
+            "find_contact_by_email": {
+                "description": "Look up one contact by exact email",
+                "params": [{"name": "email", "required": True}],
+            },
+            "create_deal": {
+                "description": "Create a deal, optionally tied to a contact",
+                "params": [
+                    {"name": "dealname", "required": True, "example": "Villa inquiry — Jane"},
+                    {"name": "amount", "required": False, "example": 250000},
+                    {"name": "dealstage", "required": False, "example": "appointmentscheduled"},
+                    {"name": "contact_id", "required": False},
+                ],
             },
         },
     },
