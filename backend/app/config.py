@@ -28,6 +28,15 @@ class Settings(BaseSettings):
 
     data_dir: Path = BACKEND_ROOT / "data"
 
+    # Feedback: where user feedback is emailed. SMTP settings are optional —
+    # without them feedback is still stored, just not emailed.
+    feedback_email: str | None = None
+    feedback_smtp_host: str | None = None
+    feedback_smtp_port: int = 587
+    feedback_smtp_username: str | None = None
+    feedback_smtp_password: str | None = None
+    feedback_from_email: str | None = None
+
     # Persistence: "files" keeps workflows/runs as JSON under data_dir;
     # "postgres" stores them in the database named by database_url.
     persistence_backend: str = "files"

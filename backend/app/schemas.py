@@ -92,6 +92,13 @@ class WorkflowSummary(BaseModel):
     node_count: int = 0
 
 
+class FeedbackCreate(BaseModel):
+    message: str
+    email: str | None = None
+    category: str | None = None
+    page: str | None = None
+
+
 class RunRequest(BaseModel):
     input: dict[str, Any] = Field(default_factory=dict)
     model_override: str | None = None

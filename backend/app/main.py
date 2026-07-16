@@ -80,14 +80,18 @@ def create_app() -> FastAPI:
         # Browser redirect from the OAuth provider: can't carry our header.
         # Safe without it — the single-use state nonce authenticates the request.
         oauth_callback_path = f"{settings.api_prefix}/oauth/callback"
+        # Submitting feedback is public; listing it (GET) still needs the token.
+        feedback_path = f"{settings.api_prefix}/feedback"
 
         @app.middleware("http")
         async def require_token(request, call_next):
             path = request.url.path
+            is_public_feedback = path == feedback_path and request.method == "POST"
             needs_auth = (
                 path.startswith(settings.api_prefix)
                 and not path.startswith(hooks_prefix)
                 and path != oauth_callback_path
+                and not is_public_feedback
                 and request.method != "OPTIONS"
             )
             if needs_auth and request.headers.get("X-Studio-Token") != settings.studio_api_token:

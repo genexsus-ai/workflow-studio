@@ -72,6 +72,18 @@ async function json<T>(response: Response): Promise<T> {
 
 export const fetchPalette = () => fetch(`${API}/palette`).then((r) => json<Palette>(r))
 
+export const submitFeedback = (payload: {
+  message: string
+  email?: string
+  category?: string
+  page?: string
+}) =>
+  fetch(`${API}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then((r) => json<{ status: string; emailed: boolean }>(r))
+
 export const listWorkflows = () =>
   fetch(`${API}/workflows`).then((r) => json<WorkflowSummary[]>(r))
 

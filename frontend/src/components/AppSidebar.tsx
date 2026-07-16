@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 
+import { FeedbackDialog } from './FeedbackDialog'
+
 export type AppId = 'workflow' | 'analytics' | 'datascience'
 
 interface AppEntry {
@@ -26,6 +28,7 @@ export function AppSidebar({ active, onSelect }: AppSidebarProps) {
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem(COLLAPSE_KEY) === '1',
   )
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
 
   useEffect(() => {
     localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0')
@@ -66,12 +69,23 @@ export function AppSidebar({ active, onSelect }: AppSidebarProps) {
 
       <button
         type="button"
+        className="app-sidebar-item app-sidebar-feedback"
+        title="Send feedback"
+        onClick={() => setFeedbackOpen(true)}
+      >
+        <span className="app-sidebar-icon">💬</span>
+        {!collapsed && <span className="app-sidebar-label">Feedback</span>}
+      </button>
+
+      <button
+        type="button"
         className="app-sidebar-collapse"
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         onClick={() => setCollapsed((value) => !value)}
       >
         {collapsed ? '»' : '«'}
       </button>
+      {feedbackOpen && <FeedbackDialog onClose={() => setFeedbackOpen(false)} />}
     </nav>
   )
 }

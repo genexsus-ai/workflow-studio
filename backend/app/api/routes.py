@@ -57,6 +57,7 @@ from app.schemas import (
     OAuthStartRequest,
     SourceCreate,
     RunRequest,
+    FeedbackCreate,
     ValidationResult,
     WorkflowDoc,
     WorkflowSummary,
@@ -96,6 +97,32 @@ def get_schedule_manager() -> ScheduleManager:
     if _schedule_manager is None:
         _schedule_manager = ScheduleManager(get_store())
     return _schedule_manager
+
+
+@router.post("/feedback", status_code=201)
+async def submit_feedback_endpoint(payload: FeedbackCreate) -> dict:
+    """Accept user feedback: persist it and email it when SMTP is set."""
+    message = (payload.message or "").strip()
+    if not message:
+        raise HTTPException(status_code=422, detail="Feedback message is required")
+    if len(message) > 5000:
+        raise HTTPException(status_code=422, detail="Feedback is too long")
+    from app.feedback import submit_feedback
+
+    return await submit_feedback(
+        message=message,
+        email=payload.email,
+        category=payload.category,
+        page=payload.page,
+    )
+
+
+@router.get("/feedback")
+def list_feedback_endpoint(limit: int = 100) -> list[dict]:
+    """List recent feedback (admin view)."""
+    from app.feedback import list_feedback
+
+    return list_feedback(limit=max(1, min(limit, 500)))
 
 
 @router.get("/palette")
