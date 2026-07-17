@@ -1,6 +1,6 @@
 # GenXAI Flow Studio
 
-> GenXAI Flow Studio is a no-code, visual studio for AI agent workflows: drag agents, tools and connectors onto a canvas, wire them together, and watch every node execute live. It offers 10 built-in connectors (Email, Slack, WhatsApp, HubSpot, S3, PostgreSQL, GitHub, Jira, Notion, Google Workspace), 25 curated built-in agent tools plus any MCP server, schedule (interval/cron with timezones) and webhook triggers (including signed GitHub events and WhatsApp Business messages), human-in-the-loop approval gates, durable datasets and analytics dashboards, a multi-agent data-science pipeline, and a live operations dashboard. Self-hosted, API-first (FastAPI + PostgreSQL), and powered by the open-source (MIT) GenXAI framework.
+> GenXAI Flow Studio is a no-code, visual studio for AI agent workflows: drag agents, tools and connectors onto a canvas, wire them together, and watch every node execute live. It offers 10 built-in connectors (Email, Slack, WhatsApp, HubSpot, S3, PostgreSQL, GitHub, Jira, Notion, Google Workspace), 46 built-in agent tools plus any MCP server, schedule (interval/cron with timezones) and webhook triggers (including signed GitHub events and WhatsApp Business messages), human-in-the-loop approval gates, durable datasets and analytics dashboards, a multi-agent data-science pipeline, and a live operations dashboard. Self-hosted, API-first (FastAPI + PostgreSQL), and powered by the open-source (MIT) GenXAI framework.
 
 ## Try it
 

@@ -51,7 +51,7 @@
       {
         "@type": "Question",
         "name": "Which integrations does Flow Studio support?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Ten built-in connectors — Email, Slack, WhatsApp, HubSpot, AWS S3, PostgreSQL, GitHub, Jira, Notion, and Google Workspace — plus 25 curated built-in agent tools and any Model Context Protocol (MCP) server you register. Every connector action doubles as an agent tool." }
+        "acceptedAnswer": { "@type": "Answer", "text": "Ten built-in connectors — Email, Slack, WhatsApp, HubSpot, AWS S3, PostgreSQL, GitHub, Jira, Notion, and Google Workspace — plus 46 built-in agent tools and any Model Context Protocol (MCP) server you register. Every connector action doubles as an agent tool." }
       },
       {
         "@type": "Question",
@@ -373,7 +373,7 @@
         <p>Approval gates pause a run until someone responds. Expressive branch conditions route on any node's output. Failed runs retry from the failed node.</p></div>
       <div class="card"><div class="ic" style="background:#dcfce7">🔌</div>
         <h3>Connectors, tools & MCP</h3>
-        <p>Ten built-in connectors, 55+ agent tools, and any Model Context Protocol server — every connector action doubles as an agent tool.</p></div>
+        <p>Ten built-in connectors, 46 agent tools, and any Model Context Protocol server — every connector action doubles as an agent tool.</p></div>
       <div class="card"><div class="ic" style="background:#fce7f3">📊</div>
         <h3>Datasets & analytics</h3>
         <p>Workflows accumulate rows into durable datasets. Query federated sources, and let agents build dashboard reports — charts plus narrative, downloadable as HTML.</p></div>
@@ -422,10 +422,10 @@
       <div class="logo-chip"><span>🪣</span>AWS S3</div>
     </div>
     <p class="logos-note">
-      Plus 25 curated built-in agent tools (HTTP &amp; API calls, web scraping,
-      PDF/CSV/JSON/Excel processing, text analysis, dataset queries, …) and any
-      MCP server you register — and every connector action above doubles as an
-      agent tool.
+      Plus 46 built-in agent tools (HTTP &amp; API calls, web scraping,
+      PDF/CSV/JSON/Excel processing, SQL, vector search, code execution,
+      dataset queries, …) and any MCP server you register — and every
+      connector action above doubles as an agent tool.
     </p>
   </div>
 </section>
@@ -508,7 +508,7 @@
       <div class="card"><h3>Do I need to know how to code?</h3>
         <p>No. Drag nodes onto the canvas, configure them in the inspector, and pass data with simple <code>{{ }}</code> expressions — or describe the workflow and let the generator draft it. Everything the UI does is also available via the REST API.</p></div>
       <div class="card"><h3>Which integrations are supported?</h3>
-        <p>Ten built-in connectors (Email, Slack, WhatsApp, HubSpot, S3, PostgreSQL, GitHub, Jira, Notion, Google Workspace), 25 curated agent tools, and any MCP server you register — every connector action doubles as an agent tool.</p></div>
+        <p>Ten built-in connectors (Email, Slack, WhatsApp, HubSpot, S3, PostgreSQL, GitHub, Jira, Notion, Google Workspace), 46 built-in agent tools, and any MCP server you register — every connector action doubles as an agent tool.</p></div>
       <div class="card"><h3>Can I self-host it?</h3>
         <p>Yes — a FastAPI backend with PostgreSQL persistence, shipped as a single container and Kubernetes-ready. Your models, your data, your infrastructure.</p></div>
       <div class="card"><h3>What happens when a workflow fails?</h3>
