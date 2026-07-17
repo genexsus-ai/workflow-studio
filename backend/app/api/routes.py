@@ -4,8 +4,8 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import APIRouter, HTTPException, Request, Response, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
 from app.automation import (
     ScheduleManager,
@@ -894,9 +894,7 @@ def profile_analytics_source(source_id: str) -> dict:
 
 
 @router.get("/analytics/sources/{source_id}/export")
-def export_analytics_source(source_id: str, format: str = "csv") -> "Response":
-    from fastapi import Response
-
+def export_analytics_source(source_id: str, format: str = "csv") -> Response:
     from app.data_catalog import export_source
 
     source, adapter = _resolve_source_or_404(source_id)
@@ -1154,10 +1152,8 @@ async def upload_file(file: "UploadFile") -> dict:
 
 
 @router.get("/files/{file_id}")
-def download_file(file_id: str) -> "FileResponse":
+def download_file(file_id: str) -> FileResponse:
     """Stream a stored workflow file (from file_download / file_write refs)."""
-    from fastapi.responses import FileResponse
-
     from genxai.core.files import get_file_store
 
     store = get_file_store()
@@ -1903,10 +1899,8 @@ def compare_experiments_endpoint(experiment_id: str, other_id: str) -> dict:
 
 
 @router.get("/datascience/experiments/{experiment_id}/export")
-def export_experiment(experiment_id: str) -> "Response":
+def export_experiment(experiment_id: str) -> Response:
     """Download the experiment as a runnable Python project (zip)."""
-    from fastapi import Response
-
     from app.experiments import build_export_zip, get_experiment_store
 
     experiment = get_experiment_store().get(experiment_id)
