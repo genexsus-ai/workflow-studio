@@ -1,0 +1,25 @@
+# GenXAI Flow Studio
+
+> GenXAI Flow Studio is a no-code, visual studio for AI agent workflows: drag agents, tools and connectors onto a canvas, wire them together, and watch every node execute live. It offers 10 built-in connectors (Email, Slack, WhatsApp, HubSpot, S3, PostgreSQL, GitHub, Jira, Notion, Google Workspace), 25 curated built-in agent tools plus any MCP server, schedule (interval/cron with timezones) and webhook triggers (including signed GitHub events and WhatsApp Business messages), human-in-the-loop approval gates, durable datasets and analytics dashboards, a multi-agent data-science pipeline, and a live operations dashboard. Self-hosted, API-first (FastAPI + PostgreSQL), and powered by the open-source (MIT) GenXAI framework.
+
+## Try it
+
+- [Live demo](https://app.genxflowstudio.com/): open, no sign-up needed — includes seeded example workflows
+- [API docs](https://api.genxflowstudio.com/docs): interactive OpenAPI reference — everything the UI does is scriptable
+
+## The engine underneath
+
+- [GenXAI framework](https://genxai-framework.com/): the open-source multi-agent framework Flow Studio compiles workflows onto — graph engine, 14 flow patterns, multi-layer memory, 45 built-in tools
+- [GenXAI on GitHub](https://github.com/genexsus-ai/genxai-framework): MIT-licensed source
+- [Framework reference for LLMs](https://genxai-framework.com/llms.txt)
+
+## Key facts
+
+- Workflows are directed graphs: conditional branches, parallel fan-out with join semantics, loops, nested subworkflows
+- Agents have capability ports (Chat Model, Memory, Tools) attached n8n-style; attached tools are called mid-reasoning by the LLM
+- A natural-language generator drafts complete workflows from a plain-English description
+- Every connector action doubles as an agent tool
+- Runs are durable: closing the browser doesn't kill a run; failed runs retry from the failed node; failures can route to an error-handler workflow
+- Versions snapshot on every save and are restorable
+- Import workflows from GenXAI CLI YAML
+- Prometheus metrics, run history with per-node timings
