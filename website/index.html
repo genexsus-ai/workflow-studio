@@ -10,9 +10,11 @@
   <meta property="og:title" content="GenXAI Flow Studio — Build AI agent workflows visually" />
   <meta property="og:description" content="A visual, no-code studio for AI agent workflows: drag agents, tools and connectors onto a canvas, wire them together, and automate with schedules, webhooks and human-in-the-loop gates." />
   <meta property="og:url" content="https://genxflowstudio.com/" />
-  <meta name="twitter:card" content="summary" />
+  <meta property="og:image" content="https://genxflowstudio.com/og-card.png" />
+  <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="GenXAI Flow Studio — Build AI agent workflows visually" />
   <meta name="twitter:description" content="A visual, no-code studio for AI agent workflows: drag agents, tools and connectors onto a canvas, wire them together, and automate with schedules, webhooks and human-in-the-loop gates." />
+  <meta name="twitter:image" content="https://genxflowstudio.com/og-card.png" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -29,6 +31,44 @@
       "url": "https://genxai-framework.com/",
       "license": "https://opensource.org/licenses/MIT"
     }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is GenXAI Flow Studio free?",
+        "acceptedAnswer": { "@type": "Answer", "text": "The public demo at app.genxflowstudio.com is open — no sign-up needed — and the Studio is self-hostable on your own infrastructure. It is built on the MIT-licensed open-source GenXAI framework." }
+      },
+      {
+        "@type": "Question",
+        "name": "Do I need to know how to code?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No. Workflows are composed by dragging nodes onto a canvas and configuring them in an inspector. Data passes between nodes with simple {{ }} expressions, and a generator can draft a whole workflow from a plain-English description. Everything the UI does is also available through a REST API for those who do want to script." }
+      },
+      {
+        "@type": "Question",
+        "name": "Which integrations does Flow Studio support?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Ten built-in connectors — Email, Slack, WhatsApp, HubSpot, AWS S3, PostgreSQL, GitHub, Jira, Notion, and Google Workspace — plus 25 curated built-in agent tools and any Model Context Protocol (MCP) server you register. Every connector action doubles as an agent tool." }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I self-host Flow Studio?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. It is a FastAPI backend with PostgreSQL persistence that runs as a single container and is Kubernetes-ready — your models, your data, your infrastructure." }
+      },
+      {
+        "@type": "Question",
+        "name": "What happens when a workflow fails?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Per-node retries with exponential backoff and timeouts, an optional continue-on-fail mode so downstream nodes can react, retrying a run from the failed node, and routing failures to a dedicated error-handler workflow. Runs are durable: closing the browser does not kill a run." }
+      },
+      {
+        "@type": "Question",
+        "name": "What is Flow Studio built on?",
+        "acceptedAnswer": { "@type": "Answer", "text": "The open-source GenXAI framework (MIT license): every workflow drawn on the canvas compiles onto its graph engine — the same engine you can drive from Python. Learn more at genxai-framework.com." }
+      }
+    ]
   }
   </script>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚛</text></svg>" />
@@ -454,6 +494,27 @@
     <div style="margin-top: 38px;">
       <a class="btn btn-primary" href="https://genxai-framework.com" target="_blank" rel="noreferrer">Explore the GenXAI framework →</a>
       <span style="margin-left: 14px; font-size: 13.5px; color: #8fa0b8;">Docs, examples, and the full open-source story at genxai-framework.com</span>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="faq">
+  <div class="wrap">
+    <div class="kicker">FAQ</div>
+    <h2>Frequently asked questions</h2>
+    <div class="grid" style="grid-template-columns: repeat(2, 1fr);">
+      <div class="card"><h3>Is GenXAI Flow Studio free?</h3>
+        <p>The public demo at <a href="https://app.genxflowstudio.com">app.genxflowstudio.com</a> is open — no sign-up needed — and the Studio is self-hostable on your own infrastructure. It's built on the MIT-licensed open-source <a href="https://genxai-framework.com">GenXAI framework</a>.</p></div>
+      <div class="card"><h3>Do I need to know how to code?</h3>
+        <p>No. Drag nodes onto the canvas, configure them in the inspector, and pass data with simple <code>{{ }}</code> expressions — or describe the workflow and let the generator draft it. Everything the UI does is also available via the REST API.</p></div>
+      <div class="card"><h3>Which integrations are supported?</h3>
+        <p>Ten built-in connectors (Email, Slack, WhatsApp, HubSpot, S3, PostgreSQL, GitHub, Jira, Notion, Google Workspace), 25 curated agent tools, and any MCP server you register — every connector action doubles as an agent tool.</p></div>
+      <div class="card"><h3>Can I self-host it?</h3>
+        <p>Yes — a FastAPI backend with PostgreSQL persistence, shipped as a single container and Kubernetes-ready. Your models, your data, your infrastructure.</p></div>
+      <div class="card"><h3>What happens when a workflow fails?</h3>
+        <p>Per-node retries with backoff, continue-on-fail so downstream nodes can react, retry-from-failed-node, and routing to an error-handler workflow. Runs are durable — closing the browser doesn't kill them.</p></div>
+      <div class="card"><h3>What is it built on?</h3>
+        <p>The open-source GenXAI framework: every workflow you draw compiles onto its graph engine — the same engine you can drive from Python. Explore it at <a href="https://genxai-framework.com">genxai-framework.com</a>.</p></div>
     </div>
   </div>
 </section>
