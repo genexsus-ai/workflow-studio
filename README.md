@@ -118,17 +118,19 @@ Open a saved workflow and expand **Automation** in the right rail:
     -H 'Content-Type: application/json' -d '{"task": "run it"}'
   ```
 
-- **Schedule** — runs the workflow automatically every N seconds. Enabled
-  schedules resume when the backend restarts.
+- **Schedule** — runs the workflow automatically on a fixed interval or a
+  cron expression (with timezone support). Enabled schedules resume when the
+  backend restarts.
 
 **Run history** (right rail) lists every run — manual, webhook, or scheduled —
 with status and trigger source. History persists across restarts.
 
 ## Integrations (Connector nodes)
 
-Drag a **Connector** node onto the canvas to call Slack, GitHub, Jira, Notion,
-or Google Workspace as a pipeline step (send a message, create an issue,
-query a database, append sheet rows, ...). Action parameters support the same
+Drag a **Connector** node onto the canvas to call Email, Slack, WhatsApp,
+HubSpot, S3, PostgreSQL, GitHub, Jira, Notion, or Google Workspace as a
+pipeline step (send a message, create an issue, upsert a CRM contact, query a
+database, append sheet rows, ...). Action parameters support the same
 `{{ }}` expressions as tool nodes.
 
 Connections are managed in the **Credentials** panel (right rail): add a
