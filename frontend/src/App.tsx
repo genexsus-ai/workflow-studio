@@ -646,8 +646,8 @@ export default function App() {
   // fresh form submission / webhook call shows up without a reload
   // (n8n-style "listening").
   const watchingTrigger =
-    (ioNodeId != null && nodes.find((n) => n.id === ioNodeId)?.data.nodeType === 'trigger') ||
-    selectedNode?.data.nodeType === 'trigger'
+    nodes.some((n) => n.data.nodeType === 'trigger') &&
+    (ioNodeId != null || selectedNode != null)
   useEffect(() => {
     if (!currentId || !watchingTrigger) return
     const timer = setInterval(() => setRunsRefreshKey((k) => k + 1), 4000)
@@ -655,20 +655,27 @@ export default function App() {
   }, [currentId, watchingTrigger])
 
   // n8n-style node I/O: a node's "input" is the output of its incoming
-  // edges' source nodes (or the run input for entry nodes).
+  // edges' source nodes (or the run input for entry nodes). Trigger nodes
+  // never execute, so their "output" is the run input itself — e.g. the
+  // form submission — which downstream nodes receive.
   const upstreamFor = useCallback(
     (nodeId: string): UpstreamEntry[] =>
       edges
-        .filter((edge) => edge.target === nodeId)
+        .filter((edge) => edge.target === nodeId && !edge.data?.attach)
         .map((edge) => {
           const source = nodes.find((n) => n.id === edge.source)
+          const isTrigger = source?.data.nodeType === 'trigger'
           return {
             id: edge.source,
             label: source?.data.label ?? edge.source,
-            result: nodeResults[edge.source],
+            result: isTrigger
+              ? runInputForDisplay
+                ? { output: runInputForDisplay, status: 'completed' }
+                : undefined
+              : nodeResults[edge.source],
           }
         }),
-    [edges, nodes, nodeResults],
+    [edges, nodes, nodeResults, runInputForDisplay],
   )
   const ioNode = ioNodeId ? (nodes.find((n) => n.id === ioNodeId) ?? null) : null
 

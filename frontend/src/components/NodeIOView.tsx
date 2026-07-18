@@ -234,7 +234,7 @@ export function NodeIOView({ node, upstream, workflowInput, result, onClose }: N
                     )}
                   </div>
                   {entry.result ? (
-                    <pre>{JSON.stringify(entry.result.output, null, 2)}</pre>
+                    <OutputViewer data={entry.result.output} />
                   ) : (
                     <p className="node-io-empty">No data yet — run the workflow to see what this node receives.</p>
                   )}
@@ -246,7 +246,7 @@ export function NodeIOView({ node, upstream, workflowInput, result, onClose }: N
                   <code>input</code>
                   <span> — workflow input</span>
                 </div>
-                <pre>{JSON.stringify(workflowInput, null, 2)}</pre>
+                <OutputViewer data={workflowInput} />
               </div>
             ) : (
               <p className="node-io-empty">
