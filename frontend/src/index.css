@@ -3177,3 +3177,23 @@ button.danger {
   font-size: 11px;
   color: #64748b;
 }
+
+/* Trigger inspector: save-and-create call to action + roomier field rows */
+
+.trigger-save-cta {
+  margin: 8px 0 12px;
+}
+
+.trigger-save-cta button {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.form-field-main {
+  flex-wrap: wrap;
+}
+
+.form-field-main input {
+  flex: 1 1 40%;
+  min-width: 110px;
+}

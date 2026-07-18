@@ -751,6 +751,7 @@ export default function App() {
               workflowInput={lastRunInput}
               onOpenIO={setIoNodeId}
               automation={automation}
+              onSaveWorkflow={onSave}
               nodeTypes={palette?.node_types ?? []}
               tools={palette?.tools ?? []}
               models={palette?.models ?? []}

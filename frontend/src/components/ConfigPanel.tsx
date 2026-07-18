@@ -22,6 +22,8 @@ interface ConfigPanelProps {
   onOpenIO?: (nodeId: string) => void
   /** Saved automation — used to show a trigger node's live URL after save. */
   automation?: AutomationConfig
+  /** Save the workflow (from the trigger's "Save & create …" button). */
+  onSaveWorkflow?: () => void
   nodeTypes: NodeTypeDef[]
   tools: ToolDef[]
   models: ModelOption[]
@@ -45,6 +47,7 @@ export function ConfigPanel({
   workflowInput = null,
   onOpenIO,
   automation,
+  onSaveWorkflow,
   nodeTypes,
   tools,
   models,
@@ -453,7 +456,16 @@ export function ConfigPanel({
                 hint="Share this URL — each submission runs the workflow with the field values as {{ input.<name> }}."
               />
             ) : (
-              <p className="config-subtitle">Save the workflow to get the shareable form URL.</p>
+              <div className="trigger-save-cta">
+                <p className="config-subtitle">
+                  Saving the workflow creates the hosted form and its shareable URL.
+                </p>
+                {onSaveWorkflow && (
+                  <button className="primary" onClick={onSaveWorkflow}>
+                    ✓ Save &amp; create form
+                  </button>
+                )}
+              </div>
             ))}
           {config.trigger_kind === 'webhook' &&
             (automation?.webhook_enabled && automation.webhook_token ? (
@@ -462,7 +474,16 @@ export function ConfigPanel({
                 hint="POST JSON to this URL; the body becomes the workflow input."
               />
             ) : (
-              <p className="config-subtitle">Save the workflow to get the webhook URL.</p>
+              <div className="trigger-save-cta">
+                <p className="config-subtitle">
+                  Saving the workflow creates the webhook and its URL.
+                </p>
+                {onSaveWorkflow && (
+                  <button className="primary" onClick={onSaveWorkflow}>
+                    ✓ Save &amp; create webhook
+                  </button>
+                )}
+              </div>
             ))}
         </>
       )}
