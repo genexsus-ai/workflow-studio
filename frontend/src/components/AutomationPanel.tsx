@@ -72,7 +72,8 @@ export function AutomationPanel({
           authoritative, so avoid a second, conflicting source of truth. */}
       {hasTrigger && (
         <p className="config-subtitle">
-          Schedule &amp; webhook are set on the trigger node on the canvas.
+          Schedule, webhook &amp; form are set on the trigger node on the canvas
+          {automation.form_enabled ? ' — its form fields are edited below.' : '.'}
         </p>
       )}
 
@@ -158,7 +159,7 @@ export function AutomationPanel({
         <span>Form — run on form submission</span>
       </label>
       )}
-      {!hasTrigger && automation.form_enabled && (
+      {automation.form_enabled && (
         <>
           <label className="field">
             <span>Form title</span>
