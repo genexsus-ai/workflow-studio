@@ -35,6 +35,8 @@ interface CanvasProps {
   onEdgesChange: OnEdgesChange
   onConnect: OnConnect
   onSelectionChange: OnSelectionChangeFunc
+  /** Open the n8n-style input/output detail view for a node (double-click). */
+  onNodeOpenIO: (nodeId: string) => void
   onDropNode: (picked: PickedNode, position: { x: number; y: number }) => void
   onAddConnected: (sourceId: string, picked: PickedNode) => void
   onAddAttached: (agentId: string, port: 'model' | 'memory' | 'tools' | 'agents', picked: PickedNode) => void
@@ -66,6 +68,7 @@ export function Canvas({
   onEdgesChange,
   onConnect,
   onSelectionChange,
+  onNodeOpenIO,
   onDropNode,
   onAddConnected,
   onAddAttached,
@@ -125,6 +128,7 @@ export function Canvas({
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onSelectionChange={onSelectionChange}
+        onNodeDoubleClick={(_, node) => onNodeOpenIO(node.id)}
         fitView
         deleteKeyCode={['Backspace', 'Delete']}
         proOptions={{ hideAttribution: true }}

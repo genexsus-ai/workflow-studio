@@ -6,12 +6,19 @@ import { apiBase, listMcpServerTools, testNode } from '../api'
 import { Combobox } from './Combobox'
 
 import type { StudioNode } from '../lib/translate'
+import type { UpstreamEntry } from './NodeIOView'
 import type { ConfigField, ConnectorDef, CredentialSummary, FlowAgentSpec, FlowPatternDef, McpServerSummary, McpToolInfo, ModelOption, NodeResult, NodeTestResult, NodeTypeDef, ToolDef, WorkflowSummary } from '../types'
 
 interface ConfigPanelProps {
   node: StudioNode | null
   edge: Edge | null
   nodeResult?: NodeResult
+  /** Upstream nodes feeding this node — shown as its input, n8n-style. */
+  upstream?: UpstreamEntry[]
+  /** The last run's input JSON — the input of entry nodes. */
+  workflowInput?: Record<string, unknown> | null
+  /** Open the full side-by-side input/output view. */
+  onOpenIO?: (nodeId: string) => void
   nodeTypes: NodeTypeDef[]
   tools: ToolDef[]
   models: ModelOption[]
@@ -31,6 +38,9 @@ export function ConfigPanel({
   node,
   edge,
   nodeResult,
+  upstream = [],
+  workflowInput = null,
+  onOpenIO,
   nodeTypes,
   tools,
   models,
@@ -457,10 +467,57 @@ export function ConfigPanel({
       {['agent', 'tool', 'connector', 'mcp', 'subworkflow', 'flow'].includes(
         node.data.nodeType,
       ) && <NodeTestSection workflowId={currentWorkflowId} nodeId={node.id} />}
+      {node.data.nodeType !== 'trigger' && (
+        <div className="node-input">
+          <h3>
+            Input
+            {onOpenIO && (
+              <button
+                type="button"
+                className="node-io-open"
+                title="Open side-by-side input/output view (or double-click the node)"
+                onClick={() => onOpenIO(node.id)}
+              >
+                ⛶ Detail view
+              </button>
+            )}
+          </h3>
+          {upstream.length > 0 ? (
+            upstream.map((entry) => (
+              <details className="node-input-source" key={entry.id} open={upstream.length === 1}>
+                <summary>
+                  <code>{entry.id}</code>
+                  {entry.result && (
+                    <span className={`node-output-status status-${entry.result.status}`}>
+                      {entry.result.status}
+                    </span>
+                  )}
+                </summary>
+                {entry.result ? (
+                  <pre>{JSON.stringify(entry.result.output, null, 2)}</pre>
+                ) : (
+                  <p className="config-subtitle">No data yet — run the workflow.</p>
+                )}
+              </details>
+            ))
+          ) : workflowInput ? (
+            <details className="node-input-source" open>
+              <summary>
+                <code>input</code> — workflow input
+              </summary>
+              <pre>{JSON.stringify(workflowInput, null, 2)}</pre>
+            </details>
+          ) : (
+            <p className="config-subtitle">
+              Entry node — receives the workflow's run input.
+            </p>
+          )}
+        </div>
+      )}
       {nodeResult && (
         <div className="node-output">
           <h3>
-            Last run{' '}
+            Output{' '}
             <span className={`node-output-status status-${nodeResult.status}`}>
               {nodeResult.status}
             </span>

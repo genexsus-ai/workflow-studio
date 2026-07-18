@@ -17,6 +17,8 @@ import { AppSidebar, type AppId } from './components/AppSidebar'
 import { AutomationPanel } from './components/AutomationPanel'
 import type { PickedNode } from './components/NodePicker'
 import { Canvas } from './components/Canvas'
+import { NodeIOView } from './components/NodeIOView'
+import type { UpstreamEntry } from './components/NodeIOView'
 import { ConfigPanel } from './components/ConfigPanel'
 import { DataScienceView } from './components/DataScienceView'
 import { DatasetsView } from './components/DatasetsView'
@@ -50,6 +52,8 @@ export default function App() {
   const [pinnedInput, setPinnedInput] = useState<Record<string, unknown> | null>(null)
   const [runEvents, setRunEvents] = useState<RunEvent[]>([])
   const [nodeResults, setNodeResults] = useState<Record<string, NodeResult>>({})
+  const [lastRunInput, setLastRunInput] = useState<Record<string, unknown> | null>(null)
+  const [ioNodeId, setIoNodeId] = useState<string | null>(null)
   const defaultAutomation: AutomationConfig = {
     webhook_enabled: false,
     webhook_token: null,
@@ -589,6 +593,7 @@ export default function App() {
       setRunError(null)
       setRunEvents([])
       setNodeResults({})
+      setLastRunInput(input)
       setNodes((current) =>
         current.map((node) => ({ ...node, data: { ...node.data, status: 'idle' as const } })),
       )
@@ -612,6 +617,24 @@ export default function App() {
     },
     [currentDoc, setNodeStatus],
   )
+
+  // n8n-style node I/O: a node's "input" is the output of its incoming
+  // edges' source nodes (or the run input for entry nodes).
+  const upstreamFor = useCallback(
+    (nodeId: string): UpstreamEntry[] =>
+      edges
+        .filter((edge) => edge.target === nodeId)
+        .map((edge) => {
+          const source = nodes.find((n) => n.id === edge.source)
+          return {
+            id: edge.source,
+            label: source?.data.label ?? edge.source,
+            result: nodeResults[edge.source],
+          }
+        }),
+    [edges, nodes, nodeResults],
+  )
+  const ioNode = ioNodeId ? (nodes.find((n) => n.id === ioNodeId) ?? null) : null
 
   const onAutomationChange = useCallback(
     async (config: AutomationConfig) => {
@@ -671,6 +694,15 @@ export default function App() {
           onGenerated={onGenerated}
           currentDoc={nodes.length > 0 ? currentDoc : null}
         />
+        {ioNode && (
+          <NodeIOView
+            node={ioNode}
+            upstream={upstreamFor(ioNode.id)}
+            workflowInput={lastRunInput}
+            result={nodeResults[ioNode.id]}
+            onClose={() => setIoNodeId(null)}
+          />
+        )}
         {banner && (
           <div className="banner" onClick={() => setBanner(null)}>
             {banner}
@@ -697,6 +729,7 @@ export default function App() {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onSelectionChange={onSelectionChange}
+            onNodeOpenIO={setIoNodeId}
             onDropNode={onDropNode}
             onDeleteNode={onDeleteNode}
             onNodeConfigChange={onNodeConfigChange}
@@ -706,6 +739,9 @@ export default function App() {
               node={selectedNode}
               edge={selectedEdge}
               nodeResult={selectedNode ? nodeResults[selectedNode.id] : undefined}
+              upstream={selectedNode ? upstreamFor(selectedNode.id) : []}
+              workflowInput={lastRunInput}
+              onOpenIO={setIoNodeId}
               nodeTypes={palette?.node_types ?? []}
               tools={palette?.tools ?? []}
               models={palette?.models ?? []}
