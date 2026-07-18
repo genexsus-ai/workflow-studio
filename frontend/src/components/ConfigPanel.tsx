@@ -443,6 +443,15 @@ export function ConfigPanel({
             <span>Trigger enabled</span>
           </label>
           )}
+          {(config.trigger_kind ?? 'schedule') === 'form' && onOpenIO && (
+            <button
+              className="form-editor-add"
+              onClick={() => onOpenIO(node.id)}
+              title="Open the full form editor (or double-click the node)"
+            >
+              ⛶ Open form editor
+            </button>
+          )}
           {(config.trigger_kind ?? 'schedule') === 'form' && (
             <FormFieldsEditor
               fields={(config.form_fields as FormField[] | undefined) ?? []}

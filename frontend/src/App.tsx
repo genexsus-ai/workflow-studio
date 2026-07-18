@@ -19,6 +19,7 @@ import type { PickedNode } from './components/NodePicker'
 import { Canvas } from './components/Canvas'
 import { NodeIOView } from './components/NodeIOView'
 import type { UpstreamEntry } from './components/NodeIOView'
+import { FormTriggerEditor } from './components/FormTriggerEditor'
 import { ConfigPanel } from './components/ConfigPanel'
 import { DataScienceView } from './components/DataScienceView'
 import { DatasetsView } from './components/DatasetsView'
@@ -724,15 +725,25 @@ export default function App() {
           onGenerated={onGenerated}
           currentDoc={nodes.length > 0 ? currentDoc : null}
         />
-        {ioNode && (
-          <NodeIOView
-            node={ioNode}
-            upstream={upstreamFor(ioNode.id)}
-            workflowInput={runInputForDisplay}
-            result={nodeResults[ioNode.id]}
-            onClose={() => setIoNodeId(null)}
-          />
-        )}
+        {ioNode &&
+          (ioNode.data.nodeType === 'trigger' && ioNode.data.config.trigger_kind === 'form' ? (
+            <FormTriggerEditor
+              node={ioNode}
+              automation={automation}
+              workflowInput={runInputForDisplay}
+              onConfigChange={onNodeConfigChange}
+              onSaveWorkflow={onSave}
+              onClose={() => setIoNodeId(null)}
+            />
+          ) : (
+            <NodeIOView
+              node={ioNode}
+              upstream={upstreamFor(ioNode.id)}
+              workflowInput={runInputForDisplay}
+              result={nodeResults[ioNode.id]}
+              onClose={() => setIoNodeId(null)}
+            />
+          ))}
         {banner && (
           <div className="banner" onClick={() => setBanner(null)}>
             {banner}

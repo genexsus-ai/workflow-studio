@@ -3232,3 +3232,199 @@ button.danger {
 .node-io-col .kv-row {
   font-size: 13px;
 }
+
+/* --------------------------------------------- n8n-style form trigger editor */
+
+.form-editor {
+  width: 1120px;
+}
+
+.form-editor-icon {
+  font-size: 20px;
+}
+
+.form-editor-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.form-editor-save {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.form-editor-save:hover {
+  background: #1d4ed8;
+}
+
+.form-editor-close {
+  border: none;
+  background: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: #64748b;
+}
+
+.form-editor-columns {
+  grid-template-columns: 3fr 2fr;
+}
+
+.form-editor-params .field {
+  margin-bottom: 12px;
+  font-size: 12.5px;
+}
+
+.form-editor-url {
+  margin-bottom: 14px;
+}
+
+.form-editor-url-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  margin-bottom: 5px;
+}
+
+.form-editor-url-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #0f172a;
+  border-radius: 8px;
+  padding: 9px 12px;
+}
+
+.form-editor-url-row code {
+  flex: 1;
+  color: #a5b4fc;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.form-editor-url-row button,
+.form-editor-url-row a {
+  flex: none;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-size: 11.5px;
+  padding: 4px 10px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.form-editor-elements-title {
+  margin-top: 6px !important;
+}
+
+.form-editor-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.form-editor-card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.form-editor-card label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.form-editor-card label em {
+  font-style: normal;
+  font-weight: 400;
+  color: #94a3b8;
+}
+
+.form-editor-card input,
+.form-editor-card select {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 7px 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 400;
+}
+
+.form-editor-options {
+  margin-top: 10px;
+}
+
+.form-editor-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.form-editor-required {
+  display: flex !important;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500 !important;
+  font-size: 12px !important;
+}
+
+.form-editor-required input {
+  width: auto;
+  margin: 0;
+}
+
+.form-editor-remove {
+  border: none;
+  background: none;
+  color: #94a3b8;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.form-editor-remove:hover {
+  color: #dc2626;
+}
+
+.form-editor-add {
+  width: 100%;
+  padding: 10px;
+  border: 1.5px dashed #cbd5e1;
+  border-radius: 10px;
+  background: none;
+  color: #475569;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.form-editor-add:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.form-editor-output-hint {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 8px;
+}
