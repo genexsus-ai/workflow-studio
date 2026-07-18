@@ -109,20 +109,30 @@ function TableView({ data }: { data: unknown }) {
       </div>
     )
   }
-  // Object -> key/value rows (nested values inline-JSON)
+  // Single object -> n8n-style one-row table: field names as columns
   if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
     const entries = Object.entries(data)
     if (entries.length === 0) return <p className="node-io-empty">Empty object.</p>
     return (
-      <div className="kv-rows">
-        {entries.map(([key, value]) => (
-          <div className="kv-row" key={key}>
-            <span className="kv-key">{key}</span>
-            <span className="kv-value">
-              {isFlat(value) ? String(value) : JSON.stringify(value).slice(0, 300)}
-            </span>
-          </div>
-        ))}
+      <div className="output-table-wrap">
+        <table className="output-table">
+          <thead>
+            <tr>
+              {entries.map(([key]) => (
+                <th key={key}>{key}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              {entries.map(([key, value]) => (
+                <td key={key}>
+                  {isFlat(value) ? String(value ?? '') : JSON.stringify(value).slice(0, 300)}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
       </div>
     )
   }
@@ -132,18 +142,24 @@ function TableView({ data }: { data: unknown }) {
 /** n8n-style output panel: Table | JSON | Schema toggle over the data. */
 export function OutputViewer({ data }: { data: unknown }) {
   const [view, setView] = useState<'table' | 'json' | 'schema'>('table')
+  const items = Array.isArray(data) ? data.length : 1
   return (
     <div className="output-viewer">
-      <div className="output-viewer-bar">
-        {(['table', 'json', 'schema'] as const).map((mode) => (
-          <button
-            key={mode}
-            className={view === mode ? 'active' : ''}
-            onClick={() => setView(mode)}
-          >
-            {mode === 'json' ? 'JSON' : mode[0].toUpperCase() + mode.slice(1)}
-          </button>
-        ))}
+      <div className="output-viewer-head">
+        <span className="output-viewer-count">
+          {items} item{items === 1 ? '' : 's'}
+        </span>
+        <div className="output-viewer-bar">
+          {(['table', 'json', 'schema'] as const).map((mode) => (
+            <button
+              key={mode}
+              className={view === mode ? 'active' : ''}
+              onClick={() => setView(mode)}
+            >
+              {mode === 'json' ? 'JSON' : mode[0].toUpperCase() + mode.slice(1)}
+            </button>
+          ))}
+        </div>
       </div>
       {view === 'table' ? (
         <TableView data={data} />

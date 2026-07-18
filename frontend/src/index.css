@@ -3555,3 +3555,20 @@ button.danger {
   color: #94a3b8;
   font-size: 11px;
 }
+
+.output-viewer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.output-viewer-head .output-viewer-bar {
+  margin: 0;
+}
+
+.output-viewer-count {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+}
