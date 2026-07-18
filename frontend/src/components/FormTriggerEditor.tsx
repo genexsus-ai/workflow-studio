@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { apiBase } from '../api'
-import { KeyValueOutput } from './NodeIOView'
+import { OutputViewer } from './NodeIOView'
 
 import type { StudioNode } from '../lib/translate'
 import type { AutomationConfig, FormField } from '../types'
@@ -236,7 +236,7 @@ export function FormTriggerEditor({
                   <code>{'{{ input.<name> }}'}</code>.
                 </p>
                 <div className="node-io-block">
-                  <KeyValueOutput data={workflowInput} />
+                  <OutputViewer data={workflowInput} />
                 </div>
               </>
             ) : (

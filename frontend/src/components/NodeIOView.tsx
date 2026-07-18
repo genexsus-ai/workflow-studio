@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 import type { StudioNode } from '../lib/translate'
 import type { NodeResult } from '../types'
@@ -36,6 +36,122 @@ export function KeyValueOutput({ data }: { data: Record<string, unknown> }) {
           <span className="kv-value">{String(value)}</span>
         </div>
       ))}
+    </div>
+  )
+}
+
+const isFlat = (value: unknown) =>
+  value === null || ['string', 'number', 'boolean'].includes(typeof value)
+
+const TYPE_BADGES: Record<string, string> = {
+  string: 'A',
+  number: '#',
+  boolean: '✓',
+  object: '{}',
+  array: '[]',
+  null: '∅',
+}
+
+const typeOf = (value: unknown): string =>
+  value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
+
+function SchemaView({ data, depth = 0 }: { data: unknown; depth?: number }) {
+  if (typeof data !== 'object' || data === null) {
+    return (
+      <div className="schema-row">
+        <span className="schema-badge">{TYPE_BADGES[typeOf(data)] ?? '?'}</span>
+        <span className="schema-type">{typeOf(data)}</span>
+      </div>
+    )
+  }
+  const entries = Array.isArray(data)
+    ? data.slice(0, 1).map((value, i) => [`[${i}]`, value] as const)
+    : Object.entries(data)
+  return (
+    <div className="schema-rows">
+      {entries.map(([key, value]) => (
+        <div key={key} style={{ marginLeft: depth * 16 }}>
+          <div className="schema-row">
+            <span className="schema-badge">{TYPE_BADGES[typeOf(value)] ?? '?'}</span>
+            <span className="schema-key">{key}</span>
+            <span className="schema-type">{typeOf(value)}</span>
+          </div>
+          {typeof value === 'object' && value !== null && depth < 2 && (
+            <SchemaView data={value} depth={depth + 1} />
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function TableView({ data }: { data: unknown }) {
+  // Array of flat objects -> a real table
+  if (Array.isArray(data) && data.length > 0 && data.every((row) => typeof row === 'object' && row !== null && !Array.isArray(row))) {
+    const rows = data.slice(0, 50) as Record<string, unknown>[]
+    const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))].slice(0, 8)
+    return (
+      <div className="output-table-wrap">
+        <table className="output-table">
+          <thead>
+            <tr>{columns.map((c) => <th key={c}>{c}</th>)}</tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i}>
+                {columns.map((c) => (
+                  <td key={c}>{isFlat(row[c]) ? String(row[c] ?? '') : JSON.stringify(row[c])}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+  // Object -> key/value rows (nested values inline-JSON)
+  if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+    const entries = Object.entries(data)
+    if (entries.length === 0) return <p className="node-io-empty">Empty object.</p>
+    return (
+      <div className="kv-rows">
+        {entries.map(([key, value]) => (
+          <div className="kv-row" key={key}>
+            <span className="kv-key">{key}</span>
+            <span className="kv-value">
+              {isFlat(value) ? String(value) : JSON.stringify(value).slice(0, 300)}
+            </span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+  return <pre>{JSON.stringify(data, null, 2)}</pre>
+}
+
+/** n8n-style output panel: Table | JSON | Schema toggle over the data. */
+export function OutputViewer({ data }: { data: unknown }) {
+  const [view, setView] = useState<'table' | 'json' | 'schema'>('table')
+  return (
+    <div className="output-viewer">
+      <div className="output-viewer-bar">
+        {(['table', 'json', 'schema'] as const).map((mode) => (
+          <button
+            key={mode}
+            className={view === mode ? 'active' : ''}
+            onClick={() => setView(mode)}
+          >
+            {mode === 'json' ? 'JSON' : mode[0].toUpperCase() + mode.slice(1)}
+          </button>
+        ))}
+      </div>
+      {view === 'table' ? (
+        <TableView data={data} />
+      ) : view === 'json' ? (
+        <pre className="output-viewer-json">{JSON.stringify(data, null, 2)}</pre>
+      ) : (
+        <SchemaView data={data} />
+      )}
     </div>
   )
 }
@@ -133,7 +249,7 @@ export function NodeIOView({ node, upstream, workflowInput, result, onClose }: N
             {node.data.nodeType === 'trigger' ? (
               workflowInput ? (
                 <div className="node-io-block">
-                  <KeyValueOutput data={workflowInput} />
+                  <OutputViewer data={workflowInput} />
                 </div>
               ) : (
                 <p className="node-io-empty">
@@ -143,7 +259,7 @@ export function NodeIOView({ node, upstream, workflowInput, result, onClose }: N
             ) : result ? (
               <div className="node-io-block">
                 {result.error && <p className="error-text">{result.error}</p>}
-                <pre>{JSON.stringify(result.output, null, 2)}</pre>
+                <OutputViewer data={result.output} />
               </div>
             ) : (
               <p className="node-io-empty">

@@ -6,7 +6,7 @@ import { apiBase, listMcpServerTools, testNode } from '../api'
 import { Combobox } from './Combobox'
 
 import type { StudioNode } from '../lib/translate'
-import { KeyValueOutput } from './NodeIOView'
+import { OutputViewer } from './NodeIOView'
 import type { UpstreamEntry } from './NodeIOView'
 import { FormFieldsEditor } from './AutomationPanel'
 import type { AutomationConfig, ConfigField, ConnectorDef, CredentialSummary, FlowAgentSpec, FlowPatternDef, FormField, McpServerSummary, McpToolInfo, ModelOption, NodeResult, NodeTestResult, NodeTypeDef, ToolDef, WorkflowSummary } from '../types'
@@ -503,7 +503,7 @@ export function ConfigPanel({
               )}
             </h3>
             {workflowInput ? (
-              <KeyValueOutput data={workflowInput} />
+              <OutputViewer data={workflowInput} />
             ) : (
               <p className="config-subtitle">
                 No runs yet — the latest run's input (e.g. a form submission) appears here.
