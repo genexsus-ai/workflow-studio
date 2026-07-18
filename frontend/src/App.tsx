@@ -676,6 +676,13 @@ export default function App() {
           workflows={workflows}
           currentId={currentId}
           running={running}
+          runBlockedBy={(() => {
+            const trigger = nodes.find(
+              (n) => n.data.nodeType === 'trigger' && n.data.config.enabled !== false,
+            )
+            const kind = trigger ? String(trigger.data.config.trigger_kind ?? 'schedule') : null
+            return kind && kind !== 'manual' ? kind : null
+          })()}
           dirty={dirty}
           onNameChange={(name) => {
             setWorkflowName(name)

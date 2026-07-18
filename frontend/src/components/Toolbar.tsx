@@ -18,6 +18,9 @@ interface ToolbarProps {
   onGenerate: () => void
   insightsOpen: boolean
   onToggleInsights: () => void
+  /** Kind of the active automated trigger (webhook/schedule/form) that
+   * starts this workflow — when set, manual Run is disabled. */
+  runBlockedBy?: string | null
 }
 
 export function Toolbar({
@@ -36,6 +39,7 @@ export function Toolbar({
   onGenerate,
   insightsOpen,
   onToggleInsights,
+  runBlockedBy = null,
 }: ToolbarProps) {
   const importFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -84,7 +88,16 @@ export function Toolbar({
         >
           📈 Insights
         </button>
-        <button className="primary" onClick={onRun} disabled={running}>
+        <button
+          className="primary"
+          onClick={onRun}
+          disabled={running || Boolean(runBlockedBy)}
+          title={
+            runBlockedBy
+              ? `This workflow is started by its ${runBlockedBy} trigger — switch the trigger to "Trigger manually" (or turn it off) to run it from here`
+              : undefined
+          }
+        >
           {running ? 'Running…' : '▶ Run'}
         </button>
       </div>
