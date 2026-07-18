@@ -197,7 +197,11 @@ export interface RunRecord {
   status: string
   started_at?: string | null
   completed_at?: string | null
-  metadata?: { trigger?: string }
+  metadata?: {
+    trigger?: string
+    input?: Record<string, unknown>
+    workflow_snapshot?: { id?: string }
+  }
   error?: string | null
   result?: {
     nodes_executed?: number

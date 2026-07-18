@@ -53,6 +53,9 @@ export default function App() {
   const [runEvents, setRunEvents] = useState<RunEvent[]>([])
   const [nodeResults, setNodeResults] = useState<Record<string, NodeResult>>({})
   const [lastRunInput, setLastRunInput] = useState<Record<string, unknown> | null>(null)
+  // Latest run input from the server — form/webhook submissions run without
+  // the browser, so the trigger's "output" has to come from run history.
+  const [latestRunInput, setLatestRunInput] = useState<Record<string, unknown> | null>(null)
   const [ioNodeId, setIoNodeId] = useState<string | null>(null)
   const defaultAutomation: AutomationConfig = {
     webhook_enabled: false,
@@ -621,6 +624,23 @@ export default function App() {
     [currentDoc, setNodeStatus],
   )
 
+  useEffect(() => {
+    if (!currentId) {
+      setLatestRunInput(null)
+      return
+    }
+    api
+      .listRuns()
+      .then((runs) => {
+        const mine = runs.find((run) => run.metadata?.workflow_snapshot?.id === currentId)
+        const input = mine?.metadata?.input
+        setLatestRunInput(input && typeof input === 'object' ? input : null)
+      })
+      .catch(() => setLatestRunInput(null))
+  }, [currentId, runsRefreshKey])
+
+  const runInputForDisplay = latestRunInput ?? lastRunInput
+
   // n8n-style node I/O: a node's "input" is the output of its incoming
   // edges' source nodes (or the run input for entry nodes).
   const upstreamFor = useCallback(
@@ -708,7 +728,7 @@ export default function App() {
           <NodeIOView
             node={ioNode}
             upstream={upstreamFor(ioNode.id)}
-            workflowInput={lastRunInput}
+            workflowInput={runInputForDisplay}
             result={nodeResults[ioNode.id]}
             onClose={() => setIoNodeId(null)}
           />
@@ -748,7 +768,7 @@ export default function App() {
               edge={selectedEdge}
               nodeResult={selectedNode ? nodeResults[selectedNode.id] : undefined}
               upstream={selectedNode ? upstreamFor(selectedNode.id) : []}
-              workflowInput={lastRunInput}
+              workflowInput={runInputForDisplay}
               onOpenIO={setIoNodeId}
               automation={automation}
               onSaveWorkflow={onSave}

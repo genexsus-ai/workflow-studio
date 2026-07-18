@@ -20,10 +20,38 @@ interface NodeIOViewProps {
   onClose: () => void
 }
 
+/** Flat objects render as n8n-style key/value rows; anything nested falls
+ * back to pretty-printed JSON. */
+export function KeyValueOutput({ data }: { data: Record<string, unknown> }) {
+  const entries = Object.entries(data)
+  const flat =
+    entries.length > 0 &&
+    entries.every(([, value]) => value === null || ['string', 'number', 'boolean'].includes(typeof value))
+  if (!flat) return <pre>{JSON.stringify(data, null, 2)}</pre>
+  return (
+    <div className="kv-rows">
+      {entries.map(([key, value]) => (
+        <div className="kv-row" key={key}>
+          <span className="kv-key">{key}</span>
+          <span className="kv-value">{String(value)}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const TRIGGER_SOURCE_HINT: Record<string, string> = {
+  form: 'A visitor submitting the hosted form fires this trigger — the submission becomes its output.',
+  webhook: 'An incoming HTTP request fires this trigger — the request body becomes its output.',
+  schedule: 'The schedule fires this trigger — its payload becomes the run input.',
+  manual: 'Pressing ▶ Run fires this trigger — the run input you type becomes its output.',
+}
+
 /**
  * n8n-style node detail view: INPUT (what flowed in from upstream nodes, or
  * the workflow input for entry nodes) side by side with OUTPUT (what this
- * node produced on the last run).
+ * node produced on the last run). Trigger nodes show the event source as
+ * input and the latest run's input (e.g. the form submission) as output.
  */
 export function NodeIOView({ node, upstream, workflowInput, result, onClose }: NodeIOViewProps) {
   useEffect(() => {
@@ -56,7 +84,12 @@ export function NodeIOView({ node, upstream, workflowInput, result, onClose }: N
         <div className="node-io-columns">
           <div className="node-io-col">
             <h3>Input</h3>
-            {upstream.length > 0 ? (
+            {node.data.nodeType === 'trigger' ? (
+              <p className="node-io-empty">
+                {TRIGGER_SOURCE_HINT[String(node.data.config.trigger_kind ?? 'schedule')] ??
+                  TRIGGER_SOURCE_HINT.schedule}
+              </p>
+            ) : upstream.length > 0 ? (
               upstream.map((entry) => (
                 <div className="node-io-block" key={entry.id}>
                   <div className="node-io-block-title">
@@ -97,7 +130,17 @@ export function NodeIOView({ node, upstream, workflowInput, result, onClose }: N
 
           <div className="node-io-col">
             <h3>Output</h3>
-            {result ? (
+            {node.data.nodeType === 'trigger' ? (
+              workflowInput ? (
+                <div className="node-io-block">
+                  <KeyValueOutput data={workflowInput} />
+                </div>
+              ) : (
+                <p className="node-io-empty">
+                  No runs yet — the latest run's input (e.g. a form submission) will appear here.
+                </p>
+              )
+            ) : result ? (
               <div className="node-io-block">
                 {result.error && <p className="error-text">{result.error}</p>}
                 <pre>{JSON.stringify(result.output, null, 2)}</pre>

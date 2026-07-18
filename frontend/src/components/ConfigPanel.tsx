@@ -6,6 +6,7 @@ import { apiBase, listMcpServerTools, testNode } from '../api'
 import { Combobox } from './Combobox'
 
 import type { StudioNode } from '../lib/translate'
+import { KeyValueOutput } from './NodeIOView'
 import type { UpstreamEntry } from './NodeIOView'
 import { FormFieldsEditor } from './AutomationPanel'
 import type { AutomationConfig, ConfigField, ConnectorDef, CredentialSummary, FlowAgentSpec, FlowPatternDef, FormField, McpServerSummary, McpToolInfo, ModelOption, NodeResult, NodeTestResult, NodeTypeDef, ToolDef, WorkflowSummary } from '../types'
@@ -485,6 +486,21 @@ export function ConfigPanel({
                 )}
               </div>
             ))}
+          <div className="node-output">
+            <h3>
+              Output{' '}
+              {workflowInput && (
+                <span className="node-output-status status-completed">latest run</span>
+              )}
+            </h3>
+            {workflowInput ? (
+              <KeyValueOutput data={workflowInput} />
+            ) : (
+              <p className="config-subtitle">
+                No runs yet — the latest run's input (e.g. a form submission) appears here.
+              </p>
+            )}
+          </div>
         </>
       )}
       {node.data.nodeType === 'flow' && (

@@ -3193,7 +3193,42 @@ button.danger {
   flex-wrap: wrap;
 }
 
-.form-field-main input {
+.form-field-main input[type='text'],
+.form-field-main input:not([type]) {
   flex: 1 1 40%;
   min-width: 110px;
+}
+
+/* n8n-style key/value output rows (trigger output, flat run inputs) */
+
+.kv-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kv-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.kv-key {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: #e2e8f0;
+  color: #334155;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.kv-value {
+  color: #0f172a;
+  word-break: break-word;
+}
+
+.node-io-col .kv-row {
+  font-size: 13px;
 }
