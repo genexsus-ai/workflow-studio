@@ -358,6 +358,31 @@ CONNECTOR_CATALOG: list[dict[str, Any]] = [
                     {"name": "values", "required": True, "example": [["a", "b"]]},
                 ],
             },
+            "update_sheet_values": {
+                "description": "Overwrite cell values in a range",
+                "params": [
+                    {"name": "spreadsheet_id", "required": True},
+                    {"name": "range_", "required": True, "example": "Sheet1!A2:C2"},
+                    {"name": "values", "required": True, "example": [["a", "b"]]},
+                ],
+            },
+            "upsert_sheet_row": {
+                "description": (
+                    "Append or update a row matched by a key column "
+                    "(header name or column letter)"
+                ),
+                "params": [
+                    {"name": "spreadsheet_id", "required": True},
+                    {"name": "sheet", "required": True, "example": "Sheet1"},
+                    {"name": "key_column", "required": True, "example": "Email"},
+                    {"name": "key_value", "required": True, "example": "{{ input.email }}"},
+                    {
+                        "name": "values",
+                        "required": True,
+                        "example": ["{{ input.name }}", "{{ input.email }}"],
+                    },
+                ],
+            },
             "list_drive_files": {
                 "description": "List Drive files",
                 "params": [
