@@ -451,7 +451,9 @@ export function NodePicker({
         byKey.set(`trigger:${kind.kind}`, triggerKindEntry(def, kind))
       }
     }
-    for (const def of [...triggerDefs, ...coreDefs]) {
+    // Note: no `type:trigger` mapping — recents saved before the per-kind
+    // entries existed would otherwise resurface the old generic entry.
+    for (const def of coreDefs) {
       // Recents saved as plain type picks resolve to the drill entry when one
       // exists, so "Agent" opens the agent list from Recently used too.
       byKey.set(`type:${def.type}`, drillFor(def) ?? defEntry(def))
@@ -479,12 +481,14 @@ export function NodePicker({
     const coreEntries = coreDefs.map((def) => drillFor(def) ?? defEntry(def))
 
     const result: [string, PickerEntry[]][] = []
-    if (recents.length > 0) result.push(['Recently used', recents])
+    // On an empty canvas the trigger question leads, n8n-style; with a
+    // trigger placed (triggerDefs filtered out upstream) recents lead.
     if (triggerDefs.length > 0)
       result.push([
         'What triggers this workflow?',
         triggerDefs.flatMap((def) => TRIGGER_KINDS.map((kind) => triggerKindEntry(def, kind))),
       ])
+    if (recents.length > 0) result.push(['Recently used', recents])
     result.push(['Core', coreEntries])
     return result
   }, [nodeDefs, connectors, agentPresets, tools, mcpServers, flows, mcpToolCache, query, view])
