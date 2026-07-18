@@ -132,8 +132,8 @@ NODE_TYPE_DEFS: list[dict[str, Any]] = [
         "label": "Trigger",
         "description": (
             "Starts the workflow automatically. Saving a workflow with a "
-            "trigger node configures its automation (schedule or webhook); "
-            "the trigger itself is not an execution step."
+            "trigger node configures its automation (schedule, webhook, or "
+            "hosted form); the trigger itself is not an execution step."
         ),
         "color": "#ef4444",
         "config_fields": [
@@ -181,6 +181,18 @@ NODE_TYPE_DEFS: list[dict[str, Any]] = [
                 "type": "password",
                 "required": False,
                 "placeholder": "HMAC secret — same as in GitHub webhook settings",
+            },
+            {
+                "name": "form_title",
+                "type": "string",
+                "required": False,
+                "placeholder": "Title shown on the hosted form",
+            },
+            {
+                "name": "form_description",
+                "type": "string",
+                "required": False,
+                "placeholder": "Shown under the form title",
             },
         ],
     },

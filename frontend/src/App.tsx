@@ -734,8 +734,6 @@ export default function App() {
             onSelectionChange={onSelectionChange}
             onNodeOpenIO={setIoNodeId}
             onDropNode={onDropNode}
-            onDeleteNode={onDeleteNode}
-            onNodeConfigChange={onNodeConfigChange}
           />
           <div className="right-rail">
             <ConfigPanel
@@ -745,6 +743,7 @@ export default function App() {
               upstream={selectedNode ? upstreamFor(selectedNode.id) : []}
               workflowInput={lastRunInput}
               onOpenIO={setIoNodeId}
+              automation={automation}
               nodeTypes={palette?.node_types ?? []}
               tools={palette?.tools ?? []}
               models={palette?.models ?? []}

@@ -54,15 +54,18 @@ export function StudioNode({ id, data, selected }: NodeProps<StudioNodeType>) {
         : data.nodeType === 'connector'
           ? [data.config.connector, data.config.action].filter(Boolean).join(' · ') || undefined
           : data.nodeType === 'trigger'
-            ? data.config.trigger_kind === 'schedule'
-              ? data.config.cron
-                ? `cron ${String(data.config.cron)}${
-                    data.config.timezone && data.config.timezone !== 'UTC'
-                      ? ` · ${String(data.config.timezone)}`
-                      : ''
-                  }`
-                : `every ${String(data.config.interval_seconds ?? 3600)}s`
-              : 'webhook'
+            ? (data.config.enabled === false ? 'off · ' : '') +
+              (data.config.trigger_kind === 'schedule'
+                ? data.config.cron
+                  ? `cron ${String(data.config.cron)}${
+                      data.config.timezone && data.config.timezone !== 'UTC'
+                        ? ` · ${String(data.config.timezone)}`
+                        : ''
+                    }`
+                  : `every ${String(data.config.interval_seconds ?? 3600)}s`
+                : data.config.trigger_kind === 'form'
+                  ? 'form'
+                  : 'webhook')
             : data.nodeType === 'model'
               ? (data.config.llm_model as string | undefined)
               : data.nodeType === 'memory'
@@ -117,13 +120,13 @@ export function StudioNode({ id, data, selected }: NodeProps<StudioNodeType>) {
         </div>
         {data.status === 'running' && <span className="studio-node-spinner" />}
       </div>
-      {/* Triggers declare automation (schedule/webhook); their outgoing
-          edges are dropped before execution, so they get no source handle
-          or add-connected button — the connection would be inert. */}
-      {!isCapability && data.nodeType !== 'output' && !isTrigger && (
+      {/* Trigger edges are documentation — they show where the flow starts
+          and are skipped at execution time (the run input carries the
+          trigger payload) — but connecting them keeps the canvas readable. */}
+      {!isCapability && data.nodeType !== 'output' && (
         <Handle type="source" position={Position.Right} />
       )}
-      {!isCapability && data.nodeType !== 'output' && !isTrigger && !hasOutgoing && (
+      {!isCapability && data.nodeType !== 'output' && !hasOutgoing && (
         <button
           type="button"
           className="studio-node-add nodrag"

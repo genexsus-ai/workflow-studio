@@ -72,8 +72,8 @@ export function AutomationPanel({
           authoritative, so avoid a second, conflicting source of truth. */}
       {hasTrigger && (
         <p className="config-subtitle">
-          Schedule, webhook &amp; form are set on the trigger node on the canvas
-          {automation.form_enabled ? ' — its form fields are edited below.' : '.'}
+          This workflow starts from the ⚡ trigger node on the canvas — click it
+          to configure the schedule, webhook, or form (and to copy its URL).
         </p>
       )}
 
@@ -130,7 +130,7 @@ export function AutomationPanel({
           )}
         </>
       )}
-      {hookUrl && (
+      {!hasTrigger && hookUrl && (
         <div className="hook-url">
           <code>{hookUrl}</code>
           <button
@@ -159,7 +159,7 @@ export function AutomationPanel({
         <span>Form — run on form submission</span>
       </label>
       )}
-      {automation.form_enabled && (
+      {!hasTrigger && automation.form_enabled && (
         <>
           <label className="field">
             <span>Form title</span>
@@ -302,7 +302,7 @@ export function AutomationPanel({
   )
 }
 
-function FormFieldsEditor({
+export function FormFieldsEditor({
   fields,
   busy,
   onChange,

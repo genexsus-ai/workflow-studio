@@ -86,14 +86,18 @@ def apply_trigger_nodes(
         )
         return True
     if kind == "form":
-        # Field definitions are edited in the Automation panel; the trigger
-        # node only switches the kind, so carry them over from the saved doc.
+        # Fields live on the trigger node config; fall back to the previously
+        # saved automation for docs from before node-level field editing.
+        raw_fields = config.get("form_fields")
+        form_fields = (
+            raw_fields if isinstance(raw_fields, list) else previous.form_fields
+        )
         doc.automation = AutomationConfig(
             form_enabled=enabled,
             form_token=previous.form_token or generate_webhook_token(),
             form_title=config.get("form_title") or previous.form_title,
             form_description=config.get("form_description") or previous.form_description,
-            form_fields=previous.form_fields,
+            form_fields=form_fields,
         )
         return True
     return False

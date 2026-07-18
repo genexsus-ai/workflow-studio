@@ -7,7 +7,8 @@ import { Combobox } from './Combobox'
 
 import type { StudioNode } from '../lib/translate'
 import type { UpstreamEntry } from './NodeIOView'
-import type { ConfigField, ConnectorDef, CredentialSummary, FlowAgentSpec, FlowPatternDef, McpServerSummary, McpToolInfo, ModelOption, NodeResult, NodeTestResult, NodeTypeDef, ToolDef, WorkflowSummary } from '../types'
+import { FormFieldsEditor } from './AutomationPanel'
+import type { AutomationConfig, ConfigField, ConnectorDef, CredentialSummary, FlowAgentSpec, FlowPatternDef, FormField, McpServerSummary, McpToolInfo, ModelOption, NodeResult, NodeTestResult, NodeTypeDef, ToolDef, WorkflowSummary } from '../types'
 
 interface ConfigPanelProps {
   node: StudioNode | null
@@ -19,6 +20,8 @@ interface ConfigPanelProps {
   workflowInput?: Record<string, unknown> | null
   /** Open the full side-by-side input/output view. */
   onOpenIO?: (nodeId: string) => void
+  /** Saved automation — used to show a trigger node's live URL after save. */
+  automation?: AutomationConfig
   nodeTypes: NodeTypeDef[]
   tools: ToolDef[]
   models: ModelOption[]
@@ -41,6 +44,7 @@ export function ConfigPanel({
   upstream = [],
   workflowInput = null,
   onOpenIO,
+  automation,
   nodeTypes,
   tools,
   models,
@@ -107,18 +111,19 @@ export function ConfigPanel({
     onNodeConfigChange(node.id, { ...config, [name]: value })
   }
 
-  // A trigger is either a schedule or a webhook; hide the fields that don't
-  // apply to the selected kind (the backend ignores them anyway).
+  // A trigger is a schedule, webhook, or form; show only the fields that
+  // apply to the selected kind (the backend ignores the rest anyway).
   const isTriggerFieldVisible = (field: ConfigField) => {
     if (node.data.nodeType !== 'trigger') return true
     const kind = (config.trigger_kind as string) ?? 'schedule'
     const provider = (config.webhook_provider as string) ?? 'generic'
     const scheduleOnly = ['interval_seconds', 'cron', 'timezone']
     const githubOnly = ['webhook_event_filter', 'webhook_secret']
-    if (kind !== 'webhook') {
-      return !['webhook_provider', ...githubOnly].includes(field.name)
-    }
-    if (scheduleOnly.includes(field.name)) return false
+    const webhookOnly = ['webhook_provider', ...githubOnly]
+    const formOnly = ['form_title', 'form_description']
+    if (kind === 'form') return ![...scheduleOnly, ...webhookOnly].includes(field.name)
+    if (kind !== 'webhook') return ![...webhookOnly, ...formOnly].includes(field.name)
+    if ([...scheduleOnly, ...formOnly].includes(field.name)) return false
     // Signature secret and event filter only apply to signed GitHub webhooks.
     if (githubOnly.includes(field.name)) return provider === 'github'
     return true
@@ -415,6 +420,43 @@ export function ConfigPanel({
           {renderField(field)}
         </label>
       ))}
+      {node.data.nodeType === 'trigger' && (
+        <>
+          <label className="field field-checkbox">
+            <input
+              type="checkbox"
+              checked={config.enabled !== false}
+              onChange={(event) => setValue('enabled', event.target.checked)}
+            />
+            <span>Trigger enabled</span>
+          </label>
+          {(config.trigger_kind ?? 'schedule') === 'form' && (
+            <FormFieldsEditor
+              fields={(config.form_fields as FormField[] | undefined) ?? []}
+              busy={false}
+              onChange={(fields) => setValue('form_fields', fields)}
+            />
+          )}
+          {(config.trigger_kind ?? 'schedule') === 'form' &&
+            (automation?.form_enabled && automation.form_token ? (
+              <TriggerUrl
+                url={`${apiBase}/forms/${automation.form_token}`}
+                hint="Share this URL — each submission runs the workflow with the field values as {{ input.<name> }}."
+              />
+            ) : (
+              <p className="config-subtitle">Save the workflow to get the shareable form URL.</p>
+            ))}
+          {config.trigger_kind === 'webhook' &&
+            (automation?.webhook_enabled && automation.webhook_token ? (
+              <TriggerUrl
+                url={`${apiBase}/hooks/${automation.webhook_token}`}
+                hint="POST JSON to this URL; the body becomes the workflow input."
+              />
+            ) : (
+              <p className="config-subtitle">Save the workflow to get the webhook URL.</p>
+            ))}
+        </>
+      )}
       {node.data.nodeType === 'flow' && (
         <FlowParamsFields
           pattern={flows.find((f) => f.id === config.flow_type)}
@@ -975,6 +1017,25 @@ function ToolParamsHint({ tool }: { tool: ToolDef | undefined }) {
           </li>
         ))}
       </ul>
+    </div>
+  )
+}
+
+function TriggerUrl({ url, hint }: { url: string; hint: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="hook-url">
+      <code>{url}</code>
+      <button
+        onClick={() => {
+          navigator.clipboard.writeText(url)
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1500)
+        }}
+      >
+        {copied ? 'Copied!' : 'Copy'}
+      </button>
+      <p className="config-subtitle">{hint}</p>
     </div>
   )
 }
