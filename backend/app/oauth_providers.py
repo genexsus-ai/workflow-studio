@@ -58,6 +58,12 @@ OAUTH_PROVIDERS: dict[str, OAuthProviderDef] = {
             ],
             "Sheets only": ["https://www.googleapis.com/auth/spreadsheets"],
             "Drive read-only": ["https://www.googleapis.com/auth/drive.readonly"],
+            "Gmail send": ["https://www.googleapis.com/auth/gmail.send"],
+            "Sheets, Drive & Gmail": [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive.readonly",
+                "https://www.googleapis.com/auth/gmail.send",
+            ],
         },
     ),
     "slack": OAuthProviderDef(

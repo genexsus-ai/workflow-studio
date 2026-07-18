@@ -383,6 +383,19 @@ CONNECTOR_CATALOG: list[dict[str, Any]] = [
                     },
                 ],
             },
+            "send_gmail": {
+                "description": (
+                    "Send an email from the connected Gmail account "
+                    "(connect with the 'Gmail send' scope)"
+                ),
+                "params": [
+                    {"name": "to", "required": True, "example": "{{ input.email }}"},
+                    {"name": "subject", "required": True, "example": "Thanks for reaching out!"},
+                    {"name": "body", "required": True, "example": "Hi {{ input.name }}, we got your message."},
+                    {"name": "cc", "required": False},
+                    {"name": "html", "required": False, "example": False},
+                ],
+            },
             "list_drive_files": {
                 "description": "List Drive files",
                 "params": [
