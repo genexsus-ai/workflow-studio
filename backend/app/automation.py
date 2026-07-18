@@ -85,6 +85,17 @@ def apply_trigger_nodes(
             webhook_event_filter=config.get("webhook_event_filter") or None,
         )
         return True
+    if kind == "form":
+        # Field definitions are edited in the Automation panel; the trigger
+        # node only switches the kind, so carry them over from the saved doc.
+        doc.automation = AutomationConfig(
+            form_enabled=enabled,
+            form_token=previous.form_token or generate_webhook_token(),
+            form_title=config.get("form_title") or previous.form_title,
+            form_description=config.get("form_description") or previous.form_description,
+            form_fields=previous.form_fields,
+        )
+        return True
     return False
 
 
@@ -98,6 +109,16 @@ def find_workflow_by_token(store: WorkflowStore, token: str) -> WorkflowDoc | No
             and doc.automation.webhook_enabled
             and doc.automation.webhook_token == token
         ):
+            return doc
+    return None
+
+
+def find_workflow_by_form_token(store: WorkflowStore, token: str) -> WorkflowDoc | None:
+    if not token:
+        return None
+    for summary in store.list():
+        doc = store.get(summary.id)
+        if doc and doc.automation.form_enabled and doc.automation.form_token == token:
             return doc
     return None
 

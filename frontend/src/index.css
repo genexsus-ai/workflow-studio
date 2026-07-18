@@ -3121,3 +3121,59 @@ button.danger {
     grid-template-columns: 1fr;
   }
 }
+
+/* ------------------------------------------------------- form trigger editor */
+
+.form-fields-editor {
+  margin: 8px 0 12px;
+  font-size: 12px;
+}
+
+.form-fields-title {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.form-field-row {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px;
+  margin-bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-field-main {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.form-field-main input[type='text'],
+.form-field-main input:not([type]),
+.form-field-row > input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 7px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.form-field-main select {
+  padding: 5px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.form-field-required {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: #64748b;
+}

@@ -77,6 +77,8 @@ def create_app() -> FastAPI:
         from fastapi.responses import JSONResponse
 
         hooks_prefix = f"{settings.api_prefix}/hooks/"
+        # Hosted forms are public by design: the token in the URL gates access.
+        forms_prefix = f"{settings.api_prefix}/forms/"
         # Browser redirect from the OAuth provider: can't carry our header.
         # Safe without it — the single-use state nonce authenticates the request.
         oauth_callback_path = f"{settings.api_prefix}/oauth/callback"
@@ -90,6 +92,7 @@ def create_app() -> FastAPI:
             needs_auth = (
                 path.startswith(settings.api_prefix)
                 and not path.startswith(hooks_prefix)
+                and not path.startswith(forms_prefix)
                 and path != oauth_callback_path
                 and not is_public_feedback
                 and request.method != "OPTIONS"

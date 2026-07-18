@@ -40,7 +40,7 @@ def test_palette_includes_trigger_node(client):
     palette = client.get("/api/v1/palette").json()
     trigger_def = next(t for t in palette["node_types"] if t["type"] == "trigger")
     kinds = next(f for f in trigger_def["config_fields"] if f["name"] == "trigger_kind")
-    assert kinds["options"] == ["schedule", "webhook"]
+    assert kinds["options"] == ["schedule", "webhook", "form"]
 
 
 def test_trigger_node_validates_and_requires_kind(client):

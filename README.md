@@ -122,6 +122,16 @@ Open a saved workflow and expand **Automation** in the right rail:
   cron expression (with timezone support). Enabled schedules resume when the
   backend restarts.
 
+- **Form** — n8n-style hosted form. Define fields (text, long text, number,
+  dropdown; each optionally required) plus a title/description, and the
+  Studio serves a public form page at `/api/v1/forms/<token>`. Each
+  submission runs the workflow with the field values as input (reference
+  them as `{{ input.<name> }}`); submitters see a thank-you page, JSON
+  clients (`Content-Type: application/json`) get
+  `{"status": "accepted", "run_id": ...}` back. Required fields are
+  validated server-side and runs appear in Run history with a `form`
+  trigger source.
+
 **Run history** (right rail) lists every run — manual, webhook, or scheduled —
 with status and trigger source. History persists across restarts.
 

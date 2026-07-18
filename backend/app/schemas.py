@@ -48,12 +48,30 @@ class EdgeDoc(BaseModel):
     attach: str | None = None  # one of ATTACH_KINDS: capability edge, not a flow edge
 
 
+class FormField(BaseModel):
+    """One field on a hosted form (form trigger)."""
+
+    name: str
+    label: str = ""
+    type: str = "text"  # "text" | "textarea" | "number" | "select"
+    required: bool = False
+    options: list[str] = Field(default_factory=list)  # for type "select"
+    placeholder: str = ""
+
+
 class AutomationConfig(BaseModel):
     webhook_enabled: bool = False
     webhook_token: str | None = None
     webhook_provider: str = "generic"  # "generic" | "github"
     webhook_secret: str | None = None  # HMAC secret for provider signatures
     webhook_event_filter: str | None = None  # e.g. "issues.opened" or "issues"
+    # Hosted form (n8n "on form submission" style): GET /forms/{token} serves
+    # the form, POST runs the workflow with the field values as input.
+    form_enabled: bool = False
+    form_token: str | None = None
+    form_title: str | None = None
+    form_description: str | None = None
+    form_fields: list[FormField] = Field(default_factory=list)
     schedule_enabled: bool = False
     interval_seconds: int = 300
     # Cron expression (crontab syntax); when set it wins over interval_seconds

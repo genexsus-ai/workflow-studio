@@ -157,12 +157,26 @@ export interface ValidationResult {
   issues: ValidationIssue[]
 }
 
+export interface FormField {
+  name: string
+  label?: string
+  type?: string // "text" | "textarea" | "number" | "select"
+  required?: boolean
+  options?: string[]
+  placeholder?: string
+}
+
 export interface AutomationConfig {
   webhook_enabled: boolean
   webhook_token?: string | null
   webhook_provider?: string
   webhook_secret?: string | null
   webhook_event_filter?: string | null
+  form_enabled?: boolean
+  form_token?: string | null
+  form_title?: string | null
+  form_description?: string | null
+  form_fields?: FormField[]
   schedule_enabled: boolean
   interval_seconds: number
   schedule_cron?: string | null

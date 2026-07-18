@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { apiBase } from '../api'
-import type { AutomationConfig, WorkflowSummary } from '../types'
+import type { AutomationConfig, FormField, WorkflowSummary } from '../types'
 
 interface AutomationPanelProps {
   workflowId: string | null
@@ -152,6 +152,65 @@ export function AutomationPanel({
         <input
           type="checkbox"
           disabled={busy}
+          checked={automation.form_enabled ?? false}
+          onChange={(event) => apply({ ...automation, form_enabled: event.target.checked })}
+        />
+        <span>Form — run on form submission</span>
+      </label>
+      )}
+      {!hasTrigger && automation.form_enabled && (
+        <>
+          <label className="field">
+            <span>Form title</span>
+            <input
+              disabled={busy}
+              value={automation.form_title ?? ''}
+              placeholder="e.g. Contact us"
+              onChange={(event) => apply({ ...automation, form_title: event.target.value || null })}
+            />
+          </label>
+          <label className="field">
+            <span>Form description (optional)</span>
+            <input
+              disabled={busy}
+              value={automation.form_description ?? ''}
+              placeholder="Shown under the title"
+              onChange={(event) =>
+                apply({ ...automation, form_description: event.target.value || null })
+              }
+            />
+          </label>
+          <FormFieldsEditor
+            fields={automation.form_fields ?? []}
+            busy={busy}
+            onChange={(fields) => apply({ ...automation, form_fields: fields })}
+          />
+          {automation.form_token && (
+            <div className="hook-url">
+              <code>{`${apiBase}/forms/${automation.form_token}`}</code>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(`${apiBase}/forms/${automation.form_token}`)
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 1500)
+                }}
+              >
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+              <p className="config-subtitle">
+                Share this URL — each submission runs the workflow with the field values as{' '}
+                <code>{'{{ input.<name> }}'}</code>.
+              </p>
+            </div>
+          )}
+        </>
+      )}
+
+      {!hasTrigger && (
+      <label className="field field-checkbox">
+        <input
+          type="checkbox"
+          disabled={busy}
           checked={automation.schedule_enabled}
           onChange={(event) => apply({ ...automation, schedule_enabled: event.target.checked })}
         />
@@ -239,5 +298,101 @@ export function AutomationPanel({
         </p>
       )}
     </details>
+  )
+}
+
+function FormFieldsEditor({
+  fields,
+  busy,
+  onChange,
+}: {
+  fields: FormField[]
+  busy: boolean
+  onChange: (fields: FormField[]) => void
+}) {
+  const update = (index: number, patch: Partial<FormField>) =>
+    onChange(fields.map((field, i) => (i === index ? { ...field, ...patch } : field)))
+
+  return (
+    <div className="form-fields-editor">
+      <span className="form-fields-title">Form fields</span>
+      {fields.length === 0 && (
+        <p className="config-subtitle">No fields yet — add at least one.</p>
+      )}
+      {fields.map((field, index) => (
+        <div className="form-field-row" key={index}>
+          <div className="form-field-main">
+            <input
+              disabled={busy}
+              defaultValue={field.name}
+              placeholder="name (input key)"
+              spellCheck={false}
+              onBlur={(event) => {
+                const name = event.target.value.trim()
+                if (name && name !== field.name) update(index, { name })
+              }}
+            />
+            <input
+              disabled={busy}
+              defaultValue={field.label ?? ''}
+              placeholder="Label shown on the form"
+              onBlur={(event) => {
+                if (event.target.value !== (field.label ?? '')) {
+                  update(index, { label: event.target.value })
+                }
+              }}
+            />
+            <select
+              disabled={busy}
+              value={field.type ?? 'text'}
+              onChange={(event) => update(index, { type: event.target.value })}
+            >
+              <option value="text">Text</option>
+              <option value="textarea">Long text</option>
+              <option value="number">Number</option>
+              <option value="select">Dropdown</option>
+            </select>
+            <label className="form-field-required" title="Required">
+              <input
+                type="checkbox"
+                disabled={busy}
+                checked={field.required ?? false}
+                onChange={(event) => update(index, { required: event.target.checked })}
+              />
+              req
+            </label>
+            <button
+              disabled={busy}
+              title="Remove field"
+              onClick={() => onChange(fields.filter((_, i) => i !== index))}
+            >
+              ✕
+            </button>
+          </div>
+          {(field.type ?? 'text') === 'select' && (
+            <input
+              disabled={busy}
+              defaultValue={(field.options ?? []).join(', ')}
+              placeholder="Options, comma-separated"
+              onBlur={(event) => {
+                const options = event.target.value
+                  .split(',')
+                  .map((option) => option.trim())
+                  .filter(Boolean)
+                update(index, { options })
+              }}
+            />
+          )}
+        </div>
+      ))}
+      <button
+        disabled={busy}
+        onClick={() =>
+          onChange([...fields, { name: `field_${fields.length + 1}`, type: 'text' }])
+        }
+      >
+        + Add field
+      </button>
+    </div>
   )
 }

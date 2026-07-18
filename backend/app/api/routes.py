@@ -5,11 +5,12 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, Response, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 
 from app.automation import (
     ScheduleManager,
     apply_trigger_nodes,
+    find_workflow_by_form_token,
     find_workflow_by_token,
     generate_webhook_token,
     verify_github_signature,
@@ -458,6 +459,22 @@ async def update_automation(workflow_id: str, config: AutomationConfig) -> Workf
     if not config.webhook_enabled:
         config.webhook_token = None
 
+    if config.form_enabled:
+        if not config.form_token:
+            config.form_token = doc.automation.form_token or generate_webhook_token()
+        seen: set[str] = set()
+        for field in config.form_fields:
+            field.name = field.name.strip()
+            if not field.name:
+                raise HTTPException(status_code=422, detail="Form fields need a name")
+            if field.name in seen:
+                raise HTTPException(
+                    status_code=422, detail=f"Duplicate form field name: {field.name}"
+                )
+            seen.add(field.name)
+    else:
+        config.form_token = None
+
     cron = (config.schedule_cron or "").strip() or None
     config.schedule_cron = cron
     config.schedule_timezone = (config.schedule_timezone or "").strip() or "UTC"
@@ -542,6 +559,166 @@ async def fire_webhook(token: str, request: Request) -> dict:
 
     run_id = get_run_manager().submit(doc, input_data, trigger="webhook")
     return {"status": "accepted", "run_id": run_id, "workflow_id": doc.id}
+
+
+# ---------------------------------------------------------------- hosted form
+
+
+def _render_form_page(doc: "WorkflowDoc", token: str, error: str | None = None) -> str:
+    """Standalone HTML page for a workflow's hosted form (n8n-style)."""
+    import html as html_mod
+
+    automation = doc.automation
+    title = html_mod.escape(automation.form_title or doc.name or "Submit")
+    description = html_mod.escape(automation.form_description or "")
+    rows: list[str] = []
+    for field in automation.form_fields:
+        name = html_mod.escape(field.name)
+        label = html_mod.escape(field.label or field.name)
+        placeholder = html_mod.escape(field.placeholder or "")
+        required = " required" if field.required else ""
+        star = ' <span class="req">*</span>' if field.required else ""
+        if field.type == "textarea":
+            control = (
+                f'<textarea name="{name}" rows="4" placeholder="{placeholder}"{required}></textarea>'
+            )
+        elif field.type == "number":
+            control = (
+                f'<input type="number" step="any" name="{name}" placeholder="{placeholder}"{required} />'
+            )
+        elif field.type == "select":
+            options = "".join(
+                f"<option>{html_mod.escape(option)}</option>" for option in field.options
+            )
+            control = f'<select name="{name}"{required}>{options}</select>'
+        else:
+            control = f'<input type="text" name="{name}" placeholder="{placeholder}"{required} />'
+        rows.append(f"<label>{label}{star}{control}</label>")
+    error_html = f'<p class="error">{html_mod.escape(error)}</p>' if error else ""
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>{title}</title>
+<style>
+  * {{ box-sizing: border-box; margin: 0; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         background: #f1f5f9; color: #0f172a; display: flex; justify-content: center;
+         padding: 48px 16px; min-height: 100vh; }}
+  .card {{ background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px;
+          padding: 28px; width: 460px; max-width: 100%; height: fit-content;
+          box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08); }}
+  h1 {{ font-size: 20px; margin-bottom: 6px; }}
+  .desc {{ color: #64748b; font-size: 14px; margin-bottom: 18px; }}
+  label {{ display: block; font-size: 13px; font-weight: 600; margin-bottom: 14px; }}
+  .req {{ color: #dc2626; }}
+  input, textarea, select {{ display: block; width: 100%; margin-top: 5px; padding: 9px 10px;
+    border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; font-weight: 400; }}
+  button {{ width: 100%; padding: 11px; border: none; border-radius: 8px; background: #2563eb;
+    color: #ffffff; font: inherit; font-weight: 600; cursor: pointer; }}
+  button:hover {{ background: #1d4ed8; }}
+  .error {{ background: #fee2e2; color: #b91c1c; border-radius: 8px; padding: 9px 12px;
+    font-size: 13px; margin-bottom: 14px; }}
+  .powered {{ margin-top: 16px; text-align: center; font-size: 11.5px; color: #94a3b8; }}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>{title}</h1>
+  {f'<p class="desc">{description}</p>' if description else ''}
+  {error_html}
+  <form method="post" action="">
+    {''.join(rows)}
+    <button type="submit">Submit</button>
+  </form>
+  <p class="powered">Powered by GenXAI Flow Studio</p>
+</div>
+</body>
+</html>"""
+
+
+@router.get("/forms/{token}")
+def render_form(token: str) -> HTMLResponse:
+    """Serve the public hosted form for a form-trigger workflow."""
+    doc = find_workflow_by_form_token(get_store(), token)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Unknown form token")
+    return HTMLResponse(_render_form_page(doc, token))
+
+
+@router.post("/forms/{token}")
+async def submit_form(token: str, request: Request) -> Response:
+    """Run the workflow with the submitted field values as input.
+
+    Accepts a browser form post (urlencoded) or JSON; browsers get a
+    thank-you page back, JSON clients get {"status": "accepted", ...}.
+    """
+    doc = find_workflow_by_form_token(get_store(), token)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Unknown form token")
+
+    content_type = request.headers.get("content-type", "")
+    wants_json = "application/json" in content_type
+    if wants_json:
+        try:
+            values = await request.json()
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=422, detail="Body must be JSON") from None
+        if not isinstance(values, dict):
+            raise HTTPException(status_code=422, detail="Body must be a JSON object")
+    else:
+        form = await request.form()
+        values = {key: form[key] for key in form}
+
+    input_data: dict[str, Any] = {}
+    missing: list[str] = []
+    for field in doc.automation.form_fields:
+        raw = values.get(field.name)
+        raw_str = "" if raw is None else str(raw).strip()
+        if field.required and raw_str == "":
+            missing.append(field.label or field.name)
+            continue
+        if raw_str == "":
+            continue
+        if field.type == "number":
+            try:
+                number = float(raw_str)
+                input_data[field.name] = int(number) if number.is_integer() else number
+            except ValueError:
+                missing.append(f"{field.label or field.name} (must be a number)")
+        else:
+            input_data[field.name] = raw if wants_json else raw_str
+
+    if missing:
+        detail = f"Missing or invalid: {', '.join(missing)}"
+        if wants_json:
+            raise HTTPException(status_code=422, detail=detail)
+        return HTMLResponse(_render_form_page(doc, token, error=detail), status_code=422)
+
+    run_id = get_run_manager().submit(doc, input_data, trigger="form")
+    if wants_json:
+        return JSONResponse(
+            {"status": "accepted", "run_id": run_id, "workflow_id": doc.id}
+        )
+    import html as html_mod
+
+    title = html_mod.escape(doc.automation.form_title or doc.name or "Submitted")
+    return HTMLResponse(
+        f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Thanks</title>
+<style>body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+background:#f1f5f9;color:#0f172a;display:flex;justify-content:center;padding:64px 16px}}
+.card{{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:32px;width:460px;
+max-width:100%;text-align:center;height:fit-content;box-shadow:0 10px 30px rgba(15,23,42,.08)}}
+h1{{font-size:20px;margin-bottom:8px}}p{{color:#64748b;font-size:14px}}</style></head>
+<body><div class="card"><h1>✓ Thanks!</h1>
+<p>Your submission to <strong>{title}</strong> was received.</p>
+</div></body></html>"""
+    )
 
 
 # ----------------------------------------------------------------- datasets

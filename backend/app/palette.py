@@ -142,7 +142,7 @@ NODE_TYPE_DEFS: list[dict[str, Any]] = [
                 "type": "select",
                 "required": True,
                 "default": "schedule",
-                "options": ["schedule", "webhook"],
+                "options": ["schedule", "webhook", "form"],
             },
             {
                 "name": "interval_seconds",
