@@ -44,7 +44,7 @@ export function AutomationPanel({
       <details className="rail-section">
         <summary>Automation</summary>
         {sharedMemoryToggle}
-        <p className="config-subtitle">Save the workflow first to enable webhooks and schedules.</p>
+        <p className="config-subtitle">Save the workflow first to enable webhooks, forms and schedules.</p>
       </details>
     )
   }

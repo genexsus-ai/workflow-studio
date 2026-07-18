@@ -461,6 +461,9 @@ export default function App() {
         ? await api.updateWorkflow(currentId, currentDoc)
         : await api.createWorkflow(currentDoc)
       setCurrentId(saved.id ?? null)
+      // The backend derives automation from trigger nodes on save (e.g. minting
+      // a form/webhook token) — reflect what it actually persisted.
+      setAutomation(saved.automation ?? defaultAutomation)
       setDirty(false)
       setBanner(`Saved "${saved.name}"`)
       setSaveCount((count) => count + 1)

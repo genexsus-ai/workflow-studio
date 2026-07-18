@@ -47,6 +47,7 @@ interface CanvasProps {
 // The trigger is a workflow-level automation declaration, not a flow step,
 // so it renders as a fixed corner badge instead of a draggable node.
 function triggerSubtitle(config: Record<string, unknown>): string {
+  if (config.trigger_kind === 'form') return 'form'
   if (config.trigger_kind !== 'schedule') return 'webhook'
   if (config.cron) {
     const tz = config.timezone && config.timezone !== 'UTC' ? ` · ${String(config.timezone)}` : ''
