@@ -37,6 +37,56 @@ interface NodePickerProps {
 
 const TRIGGER_TYPES = new Set(['trigger'])
 
+/** n8n-style "What triggers this workflow?" entries — one per trigger kind. */
+const TRIGGER_KINDS = [
+  {
+    kind: 'manual',
+    label: 'Trigger manually',
+    nodeLabel: 'Manual',
+    icon: '👆',
+    description: 'Runs the flow when you press Run in the Studio — good for getting started',
+  },
+  {
+    kind: 'schedule',
+    label: 'On a schedule',
+    nodeLabel: 'Schedule',
+    icon: '⏰',
+    description: 'Runs the flow on a fixed interval or a cron expression',
+  },
+  {
+    kind: 'webhook',
+    label: 'On webhook call',
+    nodeLabel: 'Webhook',
+    icon: '🌐',
+    description: 'Runs the flow on receiving an HTTP request',
+  },
+  {
+    kind: 'form',
+    label: 'On form submission',
+    nodeLabel: 'Form',
+    icon: '📝',
+    description: 'Generates a hosted web form and passes each submission to the workflow',
+  },
+] as const
+
+function triggerKindEntry(
+  def: NodeTypeDef,
+  kind: (typeof TRIGGER_KINDS)[number],
+): PickerEntry {
+  return {
+    key: `trigger:${kind.kind}`,
+    icon: kind.icon,
+    iconBg: `${def.color}1c`,
+    label: kind.label,
+    description: kind.description,
+    picked: {
+      type: 'trigger',
+      label: kind.nodeLabel,
+      config: { trigger_kind: kind.kind },
+    },
+  }
+}
+
 function defEntry(def: NodeTypeDef): PickerEntry {
   return {
     key: `type:${def.type}`,
@@ -309,9 +359,17 @@ export function NodePicker({
 
     const needle = query.trim().toLowerCase()
     if (needle) {
-      const matchingDefs = [...triggerDefs, ...coreDefs]
-        .filter((def) => `${def.label} ${def.type} ${def.description}`.toLowerCase().includes(needle))
-        .map(defEntry)
+      const matchingTriggerKinds = triggerDefs.flatMap((def) =>
+        TRIGGER_KINDS.filter((kind) =>
+          `${kind.label} trigger ${kind.description}`.toLowerCase().includes(needle),
+        ).map((kind) => triggerKindEntry(def, kind)),
+      )
+      const matchingDefs = [
+        ...matchingTriggerKinds,
+        ...coreDefs
+          .filter((def) => `${def.label} ${def.type} ${def.description}`.toLowerCase().includes(needle))
+          .map(defEntry),
+      ]
       const matchingPresets = agentPresets
         .filter((preset) =>
           `${preset.name} ${preset.role} ${preset.goal}`.toLowerCase().includes(needle),
@@ -388,6 +446,11 @@ export function NodePicker({
     }
 
     const byKey = new Map<string, PickerEntry>()
+    for (const def of triggerDefs) {
+      for (const kind of TRIGGER_KINDS) {
+        byKey.set(`trigger:${kind.kind}`, triggerKindEntry(def, kind))
+      }
+    }
     for (const def of [...triggerDefs, ...coreDefs]) {
       // Recents saved as plain type picks resolve to the drill entry when one
       // exists, so "Agent" opens the agent list from Recently used too.
@@ -417,7 +480,11 @@ export function NodePicker({
 
     const result: [string, PickerEntry[]][] = []
     if (recents.length > 0) result.push(['Recently used', recents])
-    if (triggerDefs.length > 0) result.push(['Triggers', triggerDefs.map(defEntry)])
+    if (triggerDefs.length > 0)
+      result.push([
+        'What triggers this workflow?',
+        triggerDefs.flatMap((def) => TRIGGER_KINDS.map((kind) => triggerKindEntry(def, kind))),
+      ])
     result.push(['Core', coreEntries])
     return result
   }, [nodeDefs, connectors, agentPresets, tools, mcpServers, flows, mcpToolCache, query, view])

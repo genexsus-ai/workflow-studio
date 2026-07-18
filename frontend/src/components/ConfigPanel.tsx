@@ -121,6 +121,8 @@ export function ConfigPanel({
     const githubOnly = ['webhook_event_filter', 'webhook_secret']
     const webhookOnly = ['webhook_provider', ...githubOnly]
     const formOnly = ['form_title', 'form_description']
+    if (kind === 'manual')
+      return ![...scheduleOnly, ...webhookOnly, ...formOnly].includes(field.name)
     if (kind === 'form') return ![...scheduleOnly, ...webhookOnly].includes(field.name)
     if (kind !== 'webhook') return ![...webhookOnly, ...formOnly].includes(field.name)
     if ([...scheduleOnly, ...formOnly].includes(field.name)) return false
@@ -422,6 +424,12 @@ export function ConfigPanel({
       ))}
       {node.data.nodeType === 'trigger' && (
         <>
+          {config.trigger_kind === 'manual' && (
+            <p className="config-subtitle">
+              This workflow runs when you press ▶ Run — no automation is set up.
+            </p>
+          )}
+          {config.trigger_kind !== 'manual' && (
           <label className="field field-checkbox">
             <input
               type="checkbox"
@@ -430,6 +438,7 @@ export function ConfigPanel({
             />
             <span>Trigger enabled</span>
           </label>
+          )}
           {(config.trigger_kind ?? 'schedule') === 'form' && (
             <FormFieldsEditor
               fields={(config.form_fields as FormField[] | undefined) ?? []}

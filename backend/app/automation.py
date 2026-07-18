@@ -85,6 +85,10 @@ def apply_trigger_nodes(
             webhook_event_filter=config.get("webhook_event_filter") or None,
         )
         return True
+    if kind == "manual":
+        # No automation: the workflow runs when someone presses Run.
+        doc.automation = AutomationConfig()
+        return True
     if kind == "form":
         # Fields live on the trigger node config; fall back to the previously
         # saved automation for docs from before node-level field editing.

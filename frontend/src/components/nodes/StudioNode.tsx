@@ -65,7 +65,9 @@ export function StudioNode({ id, data, selected }: NodeProps<StudioNodeType>) {
                   : `every ${String(data.config.interval_seconds ?? 3600)}s`
                 : data.config.trigger_kind === 'form'
                   ? 'form'
-                  : 'webhook')
+                  : data.config.trigger_kind === 'manual'
+                    ? 'run manually'
+                    : 'webhook')
             : data.nodeType === 'model'
               ? (data.config.llm_model as string | undefined)
               : data.nodeType === 'memory'
