@@ -241,7 +241,9 @@ export function FormTriggerEditor({
               </>
             ) : (
               <p className="node-io-empty">
-                No submissions yet — open the form URL, submit it, and the data will appear here.
+                <span className="form-editor-listening" /> Waiting for submissions… open the form
+                URL, submit it, and the data appears here within a few seconds. (Make sure you're
+                submitting <em>this</em> workflow's URL — each workflow has its own.)
               </p>
             )}
           </div>

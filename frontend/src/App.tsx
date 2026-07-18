@@ -642,6 +642,18 @@ export default function App() {
 
   const runInputForDisplay = latestRunInput ?? lastRunInput
 
+  // While a trigger is being inspected, poll for new external runs so a
+  // fresh form submission / webhook call shows up without a reload
+  // (n8n-style "listening").
+  const watchingTrigger =
+    (ioNodeId != null && nodes.find((n) => n.id === ioNodeId)?.data.nodeType === 'trigger') ||
+    selectedNode?.data.nodeType === 'trigger'
+  useEffect(() => {
+    if (!currentId || !watchingTrigger) return
+    const timer = setInterval(() => setRunsRefreshKey((k) => k + 1), 4000)
+    return () => clearInterval(timer)
+  }, [currentId, watchingTrigger])
+
   // n8n-style node I/O: a node's "input" is the output of its incoming
   // edges' source nodes (or the run input for entry nodes).
   const upstreamFor = useCallback(

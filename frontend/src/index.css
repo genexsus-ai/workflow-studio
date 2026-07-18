@@ -3428,3 +3428,18 @@ button.danger {
   color: #64748b;
   margin-bottom: 8px;
 }
+
+.form-editor-listening {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #3b82f6;
+  margin-right: 4px;
+  animation: listening-pulse 1.6s infinite;
+}
+
+@keyframes listening-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
