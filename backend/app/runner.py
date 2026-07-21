@@ -173,7 +173,7 @@ def translate(doc: WorkflowDoc) -> tuple[list[dict[str, Any]], list[dict[str, An
                     "params": node.config.get("params") or {},
                 },
             }
-            for passthrough in ("execution", "for_each"):
+            for passthrough in ("execution", "for_each", "for_each_concurrency"):
                 if node.config.get(passthrough):
                     config[passthrough] = node.config[passthrough]
             nodes.append({"id": node.id, "type": "tool", "config": config})
@@ -186,7 +186,7 @@ def translate(doc: WorkflowDoc) -> tuple[list[dict[str, Any]], list[dict[str, An
                     "params": node.config.get("params") or {},
                 },
             }
-            for passthrough in ("execution", "for_each"):
+            for passthrough in ("execution", "for_each", "for_each_concurrency"):
                 if node.config.get(passthrough):
                     config[passthrough] = node.config[passthrough]
             nodes.append({"id": node.id, "type": "tool", "config": config})
@@ -202,7 +202,7 @@ def translate(doc: WorkflowDoc) -> tuple[list[dict[str, Any]], list[dict[str, An
                     "keep": node.config.get("keep", True),
                 },
             }
-            for passthrough in ("execution", "for_each"):
+            for passthrough in ("execution", "for_each", "for_each_concurrency"):
                 if node.config.get(passthrough):
                     config[passthrough] = node.config[passthrough]
             nodes.append({"id": node.id, "type": "tool", "config": config})
@@ -216,7 +216,7 @@ def translate(doc: WorkflowDoc) -> tuple[list[dict[str, Any]], list[dict[str, An
             if include_input:
                 params["base"] = "{{ input }}"
             config = {"tool_name": "data_set_fields", "tool_params": params}
-            for passthrough in ("execution", "for_each"):
+            for passthrough in ("execution", "for_each", "for_each_concurrency"):
                 if node.config.get(passthrough):
                     config[passthrough] = node.config[passthrough]
             nodes.append({"id": node.id, "type": "tool", "config": config})
@@ -229,7 +229,7 @@ def translate(doc: WorkflowDoc) -> tuple[list[dict[str, Any]], list[dict[str, An
                 if val not in (None, ""):
                     params[key] = val
             config = {"tool_name": "date_time", "tool_params": params}
-            for passthrough in ("execution", "for_each"):
+            for passthrough in ("execution", "for_each", "for_each_concurrency"):
                 if node.config.get(passthrough):
                     config[passthrough] = node.config[passthrough]
             nodes.append({"id": node.id, "type": "tool", "config": config})

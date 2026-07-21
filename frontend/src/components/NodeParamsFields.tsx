@@ -495,11 +495,30 @@ export function NodeParamsFields({
             />
           </label>
           {Boolean(config.for_each) && (
-            <p className="config-subtitle">
-              This node runs once per list element — reference the current one with{' '}
-              <code>{'{{ item }}'}</code> / <code>{'{{ item_index }}'}</code>. Results collect
-              under <code>{`{{ ${node.id}.items }}`}</code>.
-            </p>
+            <>
+              <p className="config-subtitle">
+                This node runs once per list element — reference the current one with{' '}
+                <code>{'{{ item }}'}</code> / <code>{'{{ item_index }}'}</code>. Results collect
+                under <code>{`{{ ${node.id}.items }}`}</code>.
+              </p>
+              <label className="field">
+                <span>Run in parallel (items at a time)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={Number(config.for_each_concurrency ?? 1)}
+                  onChange={(event) => {
+                    const n = Math.max(1, Math.min(20, Number(event.target.value)))
+                    setValue('for_each_concurrency', n > 1 ? n : undefined)
+                  }}
+                />
+              </label>
+              <p className="config-subtitle">
+                1 = one at a time (sequential). Higher runs that many items concurrently —
+                faster for lots of slow calls (APIs, LLMs).
+              </p>
+            </>
           )}
           <ExecutionPolicyFields
             policy={(config.execution as Record<string, unknown> | undefined) ?? {}}
