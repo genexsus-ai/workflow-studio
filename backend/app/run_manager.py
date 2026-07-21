@@ -155,6 +155,21 @@ class RunManager:
         self._queue.put_nowait(run_id)
         return run_id
 
+    async def wait_for(self, run_id: str, timeout: float = 30.0) -> dict[str, Any] | None:
+        """Poll a run to a terminal state and return its record dict.
+
+        Used by the synchronous webhook respond mode. Returns None if the run
+        never reaches a terminal state within ``timeout`` seconds.
+        """
+        store = get_execution_store()
+        deadline = asyncio.get_event_loop().time() + timeout
+        while asyncio.get_event_loop().time() < deadline:
+            record = store.get(run_id)
+            if record is not None and record.status not in ("queued", "running"):
+                return record.to_dict()
+            await asyncio.sleep(0.1)
+        return None
+
     def retry_from_failure(self, run_id: str) -> str | None:
         """Re-run a failed run, replaying its successful nodes' outputs.
 

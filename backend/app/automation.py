@@ -83,6 +83,7 @@ def apply_trigger_nodes(
             webhook_provider=config.get("webhook_provider") or "generic",
             webhook_secret=config.get("webhook_secret") or previous.webhook_secret,
             webhook_event_filter=config.get("webhook_event_filter") or None,
+            webhook_respond_mode=config.get("webhook_respond_mode") or "immediately",
         )
         return True
     if kind == "manual":

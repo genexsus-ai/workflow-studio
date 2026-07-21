@@ -268,6 +268,47 @@ def test_webhook_enable_and_fire(client):
     assert client.post(f"/api/v1/hooks/{token}", json={}).status_code == 404
 
 
+def test_webhook_synchronous_respond_mode(client):
+    """when_finished mode (and ?wait=true) return the workflow output inline."""
+    workflow_id = client.post("/api/v1/workflows", json=_calculator_workflow()).json()["id"]
+
+    # when_finished: response carries the run's final output, not just an ack
+    doc = client.post(
+        f"/api/v1/workflows/{workflow_id}/automation",
+        json={
+            "webhook_enabled": True,
+            "schedule_enabled": False,
+            "interval_seconds": 300,
+            "webhook_respond_mode": "when_finished",
+        },
+    ).json()
+    token = doc["automation"]["webhook_token"]
+
+    fired = client.post(f"/api/v1/hooks/{token}", json={})
+    assert fired.status_code == 200
+    body = fired.json()
+    assert body["status"] == "success"
+    assert body["output"]["data"]["result"] == 42.0
+
+    # immediately mode acks, but ?wait=true overrides to synchronous
+    doc2 = client.post(
+        f"/api/v1/workflows/{workflow_id}/automation",
+        json={
+            "webhook_enabled": True,
+            "schedule_enabled": False,
+            "interval_seconds": 300,
+            "webhook_respond_mode": "immediately",
+        },
+    ).json()
+    token2 = doc2["automation"]["webhook_token"]
+
+    ack = client.post(f"/api/v1/hooks/{token2}", json={})
+    assert ack.json()["status"] == "accepted" and "output" not in ack.json()
+
+    waited = client.post(f"/api/v1/hooks/{token2}?wait=true", json={})
+    assert waited.json()["output"]["data"]["result"] == 42.0
+
+
 def test_webhook_unknown_token_404(client):
     assert client.post("/api/v1/hooks/not-a-real-token", json={}).status_code == 404
 

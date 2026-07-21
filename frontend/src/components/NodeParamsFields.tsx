@@ -82,7 +82,7 @@ export function NodeParamsFields({
     const provider = (config.webhook_provider as string) ?? 'generic'
     const scheduleOnly = ['interval_seconds', 'cron', 'timezone']
     const githubOnly = ['webhook_event_filter', 'webhook_secret']
-    const webhookOnly = ['webhook_provider', ...githubOnly]
+    const webhookOnly = ['webhook_provider', 'webhook_respond_mode', ...githubOnly]
     const formOnly = ['form_title', 'form_description']
     if (kind === 'manual')
       return ![...scheduleOnly, ...webhookOnly, ...formOnly].includes(field.name)
@@ -438,7 +438,11 @@ export function NodeParamsFields({
             (automation?.webhook_enabled && automation.webhook_token ? (
               <TriggerUrl
                 url={`${apiBase}/hooks/${automation.webhook_token}`}
-                hint="POST JSON to this URL; the body becomes the workflow input."
+                hint={
+                  config.webhook_respond_mode === 'when_finished'
+                    ? 'POST JSON here; the response waits for the run and returns its output.'
+                    : 'POST JSON here; the body becomes the workflow input. Add ?wait=true to get the output back synchronously.'
+                }
               />
             ) : (
               <div className="trigger-save-cta">

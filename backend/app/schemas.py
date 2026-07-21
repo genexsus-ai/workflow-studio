@@ -68,6 +68,9 @@ class AutomationConfig(BaseModel):
     webhook_provider: str = "generic"  # "generic" | "github"
     webhook_secret: str | None = None  # HMAC secret for provider signatures
     webhook_event_filter: str | None = None  # e.g. "issues.opened" or "issues"
+    # "immediately" acks and runs async; "when_finished" waits for the run and
+    # returns its output (n8n's respond mode). A ?wait=true query overrides.
+    webhook_respond_mode: str = "immediately"
     # Hosted form (n8n "on form submission" style): GET /forms/{token} serves
     # the form, POST runs the workflow with the field values as input.
     form_enabled: bool = False

@@ -573,7 +573,49 @@ async def fire_webhook(token: str, request: Request) -> dict:
         input_data = {"event": full_event, "payload": payload}
 
     run_id = get_run_manager().submit(doc, input_data, trigger="webhook")
+
+    # Respond mode: "immediately" acks; "when_finished" (or ?wait=true) blocks
+    # until the run completes and returns its output — a callable JSON API.
+    wait_param = request.query_params.get("wait")
+    wait = (
+        automation.webhook_respond_mode == "when_finished"
+        if wait_param is None
+        else wait_param.lower() in ("1", "true", "yes")
+    )
+    if wait:
+        record = await get_run_manager().wait_for(run_id)
+        if record is None:
+            return {"status": "timeout", "run_id": run_id, "workflow_id": doc.id}
+        return {
+            "status": record.get("status"),
+            "run_id": run_id,
+            "workflow_id": doc.id,
+            "output": _workflow_output(record),
+        }
     return {"status": "accepted", "run_id": run_id, "workflow_id": doc.id}
+
+
+def _workflow_output(record: dict[str, Any]) -> Any:
+    """The workflow's result for a synchronous webhook response.
+
+    Returns the last non-input/output node's output (n8n returns the last
+    node's data), falling back to the last node output or the raw result.
+    """
+    result = record.get("result") or {}
+    node_results = result.get("node_results") or {}
+    snapshot = (record.get("metadata") or {}).get("workflow_snapshot") or {}
+    node_types = {n.get("id"): n.get("type") for n in snapshot.get("nodes", [])}
+
+    meaningful = [
+        entry.get("output")
+        for node_id, entry in node_results.items()
+        if node_types.get(node_id) not in ("input", "output")
+    ]
+    if meaningful:
+        return meaningful[-1]
+    if node_results:
+        return list(node_results.values())[-1].get("output")
+    return result
 
 
 # ---------------------------------------------------------------- hosted form

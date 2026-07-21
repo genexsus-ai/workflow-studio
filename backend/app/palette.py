@@ -183,6 +183,13 @@ NODE_TYPE_DEFS: list[dict[str, Any]] = [
                 "placeholder": "HMAC secret — same as in GitHub webhook settings",
             },
             {
+                "name": "webhook_respond_mode",
+                "type": "select",
+                "required": False,
+                "default": "immediately",
+                "options": ["immediately", "when_finished"],
+            },
+            {
                 "name": "form_title",
                 "type": "string",
                 "required": False,
