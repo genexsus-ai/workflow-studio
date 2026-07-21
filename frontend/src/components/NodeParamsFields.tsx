@@ -30,6 +30,9 @@ export interface NodeParamsFieldsProps {
   onSaveWorkflow?: () => void
   /** Shows an "Open form editor" shortcut button (rail only — the dialog IS the editor). */
   onOpenIO?: (nodeId: string) => void
+  /** Hide the inline "Test this node" button — the dialog uses its header
+   * "Execute step" button instead, so the inline one would be redundant. */
+  hideNodeTest?: boolean
   tools: ToolDef[]
   models: ModelOption[]
   connectors: ConnectorDef[]
@@ -54,6 +57,7 @@ export function NodeParamsFields({
   automation,
   onSaveWorkflow,
   onOpenIO,
+  hideNodeTest,
   tools,
   models,
   connectors,
@@ -501,7 +505,8 @@ export function NodeParamsFields({
       )}
       {['agent', 'tool', 'connector', 'mcp', 'subworkflow', 'flow'].includes(
         node.data.nodeType,
-      ) && <NodeTestSection workflowId={currentWorkflowId} nodeId={node.id} />}
+      ) &&
+        !hideNodeTest && <NodeTestSection workflowId={currentWorkflowId} nodeId={node.id} />}
     </>
   )
 }

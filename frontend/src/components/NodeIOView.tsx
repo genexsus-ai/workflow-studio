@@ -320,7 +320,7 @@ export function NodeIOView({
 
           <div className="node-io-col node-io-params">
             <h3>Parameters</h3>
-            <NodeParamsFields node={node} def={def} {...paramsProps} />
+            <NodeParamsFields node={node} def={def} {...paramsProps} hideNodeTest />
           </div>
 
           <div className="node-io-col">
