@@ -394,16 +394,33 @@ export default function App() {
       if (!source || !target) return
 
       const taken = new Set(nodes.map((n) => n.id))
-      // New node takes the target's spot; target and everything to its right
-      // shift over to make room (Zapier/n8n reflow).
+      // Shift only the target and its downstream descendants (a BFS over flow
+      // edges) so unrelated/parallel branches that merely sit to the right
+      // stay put — a smarter Zapier/n8n reflow.
+      const adjacency = new Map<string, string[]>()
+      for (const e of edges) {
+        if (e.data?.attach) continue
+        ;(adjacency.get(e.source) ?? adjacency.set(e.source, []).get(e.source)!).push(e.target)
+      }
+      const downstream = new Set<string>([target.id])
+      const queue = [target.id]
+      while (queue.length) {
+        const cur = queue.shift()!
+        for (const next of adjacency.get(cur) ?? []) {
+          if (next !== source.id && !downstream.has(next)) {
+            downstream.add(next)
+            queue.push(next)
+          }
+        }
+      }
+
       const shift = 260
-      const targetX = target.position.x
-      const newNode = buildNode(picked, { x: targetX, y: target.position.y }, taken)
+      const newNode = buildNode(picked, { x: target.position.x, y: target.position.y }, taken)
 
       setNodes((current) =>
         current
           .map((n) =>
-            n.position.x >= targetX ? { ...n, position: { ...n.position, x: n.position.x + shift } } : n,
+            downstream.has(n.id) ? { ...n, position: { ...n.position, x: n.position.x + shift } } : n,
           )
           .concat(newNode),
       )
