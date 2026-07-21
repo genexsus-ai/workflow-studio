@@ -370,7 +370,10 @@ async def run_workflow_stream(
             },
         )
     run_id = get_run_manager().submit(
-        doc, payload.input, trigger="manual", model_override=payload.model_override
+        doc,
+        _manual_run_input(doc, payload.input),
+        trigger="manual",
+        model_override=payload.model_override,
     )
     return _sse(run_id)
 
@@ -389,11 +392,23 @@ async def run_adhoc_stream(payload: AdhocRunRequest) -> StreamingResponse:
         )
     run_id = get_run_manager().submit(
         payload.workflow,
-        payload.input,
+        _manual_run_input(payload.workflow, payload.input),
         trigger="manual",
         model_override=payload.model_override,
     )
     return _sse(run_id)
+
+
+def _manual_run_input(doc: "WorkflowDoc", input_data: Any) -> Any:
+    """Running a form-triggered workflow from the editor is the test path
+    (n8n's Test URL): stamp fresh test-mode submission metadata so the
+    trigger's output reads formMode "test" instead of a stale value.
+    """
+    if getattr(doc.automation, "form_enabled", False) and isinstance(input_data, dict):
+        seeded = {k: v for k, v in input_data.items() if k not in ("submittedAt", "formMode")}
+        _stamp_form_meta(seeded, "test")
+        return seeded
+    return input_data
 
 
 def _latest_run_context(workflow_name: str) -> tuple[dict[str, Any], dict[str, Any], str | None]:
@@ -564,6 +579,22 @@ async def fire_webhook(token: str, request: Request) -> dict:
 # ---------------------------------------------------------------- hosted form
 
 
+def _stamp_form_meta(input_data: dict[str, Any], mode: str) -> None:
+    """Add n8n-style submission metadata (submittedAt, formMode) in place.
+
+    ``mode`` is "production" for real submissions through the form URL, or
+    "test" when a form-triggered workflow is exercised from the editor.
+    Existing keys are left untouched so callers can override.
+    """
+    from datetime import datetime, timezone
+
+    input_data.setdefault(
+        "submittedAt",
+        datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat(),
+    )
+    input_data.setdefault("formMode", mode)
+
+
 def _render_form_page(doc: "WorkflowDoc", token: str, error: str | None = None) -> str:
     """Standalone HTML page for a workflow's hosted form (n8n-style)."""
     import html as html_mod
@@ -697,13 +728,8 @@ async def submit_form(token: str, request: Request) -> Response:
             raise HTTPException(status_code=422, detail=detail)
         return HTMLResponse(_render_form_page(doc, token, error=detail), status_code=422)
 
-    # n8n-style submission metadata: an ISO-8601 local timestamp and the mode.
-    from datetime import datetime, timezone
-
-    input_data["submittedAt"] = (
-        datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
-    )
-    input_data["formMode"] = "production"
+    # n8n-style submission metadata; the live form URL is the production path.
+    _stamp_form_meta(input_data, "production")
 
     run_id = get_run_manager().submit(doc, input_data, trigger="form")
     if wants_json:

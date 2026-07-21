@@ -138,6 +138,28 @@ def test_form_submission_runs_workflow(client):
             _wait_for_run(client, record["run_id"])
 
 
+def test_manual_run_uses_test_form_mode(client):
+    workflow_id = client.post("/api/v1/workflows", json=_calc_doc()).json()["id"]
+    _enable_form(client, workflow_id)
+
+    # Running a form-triggered workflow from the editor is the test path:
+    # test-mode metadata is stamped, overriding any stale formMode.
+    with client.stream(
+        "POST",
+        f"/api/v1/workflows/{workflow_id}/run/stream",
+        json={"input": {"task": "add", "formMode": "production"}},
+    ) as response:
+        assert response.status_code == 200
+        for _ in response.iter_lines():
+            pass
+
+    run = _wait_for_run(client, client.get("/api/v1/runs").json()[0]["run_id"])
+    submitted = run["metadata"]["input"]
+    assert submitted["task"] == "add"
+    assert submitted["formMode"] == "test"
+    assert "T" in submitted["submittedAt"]
+
+
 def test_form_submission_validates_required_fields(client):
     workflow_id = client.post("/api/v1/workflows", json=_calc_doc()).json()["id"]
     token = _enable_form(client, workflow_id)
