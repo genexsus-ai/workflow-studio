@@ -71,15 +71,22 @@ export function ConfigPanel({
           {edge.source} → {edge.target}
         </p>
         <label className="field">
-          <span>Condition (state key)</span>
+          <span>Condition</span>
           <input
             value={condition}
-            placeholder="e.g. approved"
+            placeholder="e.g. input.age >= 18"
             onChange={(event) =>
               onEdgeChange(edge.id, { condition: event.target.value || null, parallel })
             }
           />
         </label>
+        <p className="config-subtitle">
+          Take this path when the condition passes. Supports{' '}
+          <code>{'>'}</code> <code>{'<'}</code> <code>{'>='}</code> <code>{'<='}</code>{' '}
+          <code>==</code> <code>!=</code> <code>contains</code> and <code>not</code>, e.g.{' '}
+          <code>input.status == 'active'</code> or <code>score.output.value {'>'} 0.8</code>. Quote
+          text literals; draw several edges for multi-way (switch) routing.
+        </p>
         <label className="field field-checkbox">
           <input
             type="checkbox"
