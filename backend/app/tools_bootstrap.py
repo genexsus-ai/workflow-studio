@@ -27,6 +27,8 @@ def register_studio_tools() -> int:
         DatasetWriteTool,
     )
     from genxai.tools.builtin.data.data_filter import DataFilterTool
+    from genxai.tools.builtin.data.data_set_fields import SetFieldsTool
+    from genxai.tools.builtin.data.date_time import DateTimeTool
     from genxai.tools.builtin.data.data_transformer import DataTransformerTool
     from genxai.tools.builtin.data.json_processor import JSONProcessorTool
     from genxai.tools.builtin.data.text_analyzer import TextAnalyzerTool
@@ -60,6 +62,8 @@ def register_studio_tools() -> int:
         DatasetQueryTool,
         DataTransformerTool,
         DataFilterTool,
+        SetFieldsTool,
+        DateTimeTool,
         JSONProcessorTool,
         TextAnalyzerTool,
         XMLProcessorTool,

@@ -206,6 +206,33 @@ def translate(doc: WorkflowDoc) -> tuple[list[dict[str, Any]], list[dict[str, An
                 if node.config.get(passthrough):
                     config[passthrough] = node.config[passthrough]
             nodes.append({"id": node.id, "type": "tool", "config": config})
+        elif node.type == "set_fields":
+            # Set / Edit Fields nodes run through the data_set_fields tool.
+            include_input = node.config.get("include_input", False)
+            params: dict[str, Any] = {
+                "fields": node.config.get("fields") or {},
+                "keep_only_set": not include_input,
+            }
+            if include_input:
+                params["base"] = "{{ input }}"
+            config = {"tool_name": "data_set_fields", "tool_params": params}
+            for passthrough in ("execution", "for_each"):
+                if node.config.get(passthrough):
+                    config[passthrough] = node.config[passthrough]
+            nodes.append({"id": node.id, "type": "tool", "config": config})
+        elif node.type == "datetime":
+            # Date/Time formatter nodes run through the date_time tool.
+            # Omit unset params so the tool's validator doesn't reject nulls.
+            params = {"operation": node.config.get("operation") or "format"}
+            for key in ("value", "format", "amount", "unit", "to"):
+                val = node.config.get(key)
+                if val not in (None, ""):
+                    params[key] = val
+            config = {"tool_name": "date_time", "tool_params": params}
+            for passthrough in ("execution", "for_each"):
+                if node.config.get(passthrough):
+                    config[passthrough] = node.config[passthrough]
+            nodes.append({"id": node.id, "type": "tool", "config": config})
         elif node.type == "agent":
             config = dict(node.config)
             if node.id in agent_overrides:

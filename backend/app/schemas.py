@@ -14,6 +14,8 @@ NODE_TYPES = (
     "connector",
     "mcp",
     "filter",
+    "set_fields",
+    "datetime",
     "decision",
     "loop",
     "model",

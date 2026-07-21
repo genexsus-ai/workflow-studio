@@ -9,6 +9,8 @@ export const NODE_ICONS: Record<string, string> = {
   connector: '🔌',
   mcp: '🧩',
   filter: '🧹',
+  set_fields: '✏️',
+  datetime: '📅',
   decision: '🔀',
   loop: '🔁',
   flow: '👥',

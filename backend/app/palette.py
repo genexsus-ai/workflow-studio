@@ -375,6 +375,73 @@ NODE_TYPE_DEFS: list[dict[str, Any]] = [
         ],
     },
     {
+        "type": "set_fields",
+        "label": "Edit Fields",
+        "description": "Build a clean output object: rename, reshape, or add computed fields.",
+        "color": "#14b8a6",
+        "config_fields": [
+            {
+                "name": "fields",
+                "type": "json",
+                "required": True,
+                "default": {},
+                "placeholder": '{ "name": "{{ input.Name }}", "when": "{{ input.submittedAt }}" }',
+            },
+            {
+                "name": "include_input",
+                "type": "boolean",
+                "required": False,
+                "default": False,
+            },
+        ],
+    },
+    {
+        "type": "datetime",
+        "label": "Date & Time",
+        "description": "Format a date, add/subtract time, or diff two dates.",
+        "color": "#6366f1",
+        "config_fields": [
+            {
+                "name": "operation",
+                "type": "select",
+                "required": True,
+                "default": "format",
+                "options": ["format", "now", "add", "subtract", "diff"],
+            },
+            {
+                "name": "value",
+                "type": "string",
+                "required": False,
+                "placeholder": "{{ input.submittedAt }} — input date (omit for 'now')",
+            },
+            {
+                "name": "format",
+                "type": "string",
+                "required": False,
+                "placeholder": "preset: iso · date · time · datetime · us · human — or a strftime string",
+            },
+            {
+                "name": "amount",
+                "type": "number",
+                "required": False,
+                "placeholder": "amount to add/subtract",
+            },
+            {
+                "name": "unit",
+                "type": "select",
+                "required": False,
+                "default": "days",
+                "options": ["seconds", "minutes", "hours", "days", "weeks"],
+            },
+            {
+                "name": "to",
+                "type": "string",
+                "required": False,
+                "placeholder": "second date (for diff)",
+            },
+        ],
+    },
+    {
         "type": "decision",
         "label": "Decision",
         "description": "Routes flow based on a condition key in workflow state.",
