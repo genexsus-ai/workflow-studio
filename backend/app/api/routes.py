@@ -697,6 +697,14 @@ async def submit_form(token: str, request: Request) -> Response:
             raise HTTPException(status_code=422, detail=detail)
         return HTMLResponse(_render_form_page(doc, token, error=detail), status_code=422)
 
+    # n8n-style submission metadata: an ISO-8601 local timestamp and the mode.
+    from datetime import datetime, timezone
+
+    input_data["submittedAt"] = (
+        datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
+    )
+    input_data["formMode"] = "production"
+
     run_id = get_run_manager().submit(doc, input_data, trigger="form")
     if wants_json:
         return JSONResponse(

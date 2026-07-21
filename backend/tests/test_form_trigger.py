@@ -119,7 +119,13 @@ def test_form_submission_runs_workflow(client):
 
     run = _wait_for_run(client, body["run_id"])
     assert run["metadata"]["trigger"] == "form"
-    assert run["metadata"]["input"] == {"task": "add", "amount": 2.5, "priority": "high"}
+    submitted = run["metadata"]["input"]
+    assert submitted["task"] == "add"
+    assert submitted["amount"] == 2.5
+    assert submitted["priority"] == "high"
+    # n8n-style submission metadata
+    assert submitted["formMode"] == "production"
+    assert "T" in submitted["submittedAt"]  # ISO-8601 timestamp
 
     # Browser form post: thank-you page
     browser = client.post(f"/api/v1/forms/{token}", data={"task": "hello"})
