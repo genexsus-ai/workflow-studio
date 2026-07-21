@@ -13,6 +13,7 @@ NODE_TYPES = (
     "tool",
     "connector",
     "mcp",
+    "filter",
     "decision",
     "loop",
     "model",

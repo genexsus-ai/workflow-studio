@@ -190,6 +190,22 @@ def translate(doc: WorkflowDoc) -> tuple[list[dict[str, Any]], list[dict[str, An
                 if node.config.get(passthrough):
                     config[passthrough] = node.config[passthrough]
             nodes.append({"id": node.id, "type": "tool", "config": config})
+        elif node.type == "filter":
+            # Filter nodes run through the data_filter tool (n8n-style).
+            config = {
+                "tool_name": "data_filter",
+                "tool_params": {
+                    "items": node.config.get("items"),
+                    "field": node.config.get("field") or None,
+                    "operator": node.config.get("operator") or "is_not_empty",
+                    "value": node.config.get("value"),
+                    "keep": node.config.get("keep", True),
+                },
+            }
+            for passthrough in ("execution", "for_each"):
+                if node.config.get(passthrough):
+                    config[passthrough] = node.config[passthrough]
+            nodes.append({"id": node.id, "type": "tool", "config": config})
         elif node.type == "agent":
             config = dict(node.config)
             if node.id in agent_overrides:

@@ -8,6 +8,7 @@ export const NODE_ICONS: Record<string, string> = {
   tool: '🛠️',
   connector: '🔌',
   mcp: '🧩',
+  filter: '🧹',
   decision: '🔀',
   loop: '🔁',
   flow: '👥',
