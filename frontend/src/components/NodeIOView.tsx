@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 
+import { testNode } from '../api'
 import { NodeParamsFields, type NodeParamsFieldsProps } from './NodeParamsFields'
 
 import type { StudioNode } from '../lib/translate'
-import type { NodeResult, NodeTypeDef } from '../types'
+import type { NodeResult, NodeTestResult, NodeTypeDef } from '../types'
 
 /** One upstream node feeding the selected node (an incoming edge's source). */
 export interface UpstreamEntry {
@@ -199,6 +200,10 @@ export function NodeIOView({
   onClose,
   ...paramsProps
 }: NodeIOViewProps) {
+  const [testResult, setTestResult] = useState<NodeTestResult | null>(null)
+  const [testing, setTesting] = useState(false)
+  const [testError, setTestError] = useState<string | null>(null)
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
@@ -208,6 +213,28 @@ export function NodeIOView({
   }, [onClose])
 
   const def = nodeTypes.find((t) => t.type === node.data.nodeType)
+  const workflowId = paramsProps.currentWorkflowId
+  // Trigger nodes don't execute as steps; everything else can be run alone.
+  const canExecute = node.data.nodeType !== 'trigger'
+
+  const executeStep = async () => {
+    if (!workflowId) return
+    setTesting(true)
+    setTestError(null)
+    try {
+      setTestResult(await testNode(workflowId, node.id))
+    } catch (err) {
+      setTestResult(null)
+      setTestError((err as Error).message)
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  // Prefer a fresh Execute-step result; fall back to the last run's output.
+  const shownOutput = testResult
+    ? { output: testResult.output, status: testResult.status, error: testResult.error ?? undefined }
+    : result
 
   return (
     <div className="node-io-overlay" onClick={onClose}>
@@ -216,14 +243,30 @@ export function NodeIOView({
           <h2>
             {node.data.label}
             <span className="node-io-type">{String(node.data.nodeType)}</span>
-            {result && (
-              <span className={`node-output-status status-${result.status}`}>{result.status}</span>
+            {shownOutput && (
+              <span className={`node-output-status status-${shownOutput.status}`}>
+                {shownOutput.status}
+              </span>
             )}
-            {result?.duration_ms != null && (
+            {result?.duration_ms != null && !testResult && (
               <span className="node-output-duration">{result.duration_ms}ms</span>
             )}
           </h2>
-          <button onClick={onClose} title="Close (Esc)">
+          {canExecute && (
+            <button
+              className="node-io-execute"
+              onClick={executeStep}
+              disabled={testing || !workflowId}
+              title={
+                workflowId
+                  ? 'Run just this node with the current parameters'
+                  : 'Save the workflow first'
+              }
+            >
+              {testing ? 'Executing…' : '▶ Execute step'}
+            </button>
+          )}
+          <button className="node-io-close-x" onClick={onClose} title="Close (Esc)">
             ✕
           </button>
         </div>
@@ -292,15 +335,17 @@ export function NodeIOView({
                   No runs yet — the latest run's input (e.g. a form submission) will appear here.
                 </p>
               )
-            ) : result ? (
+            ) : testError ? (
+              <p className="error-text">{testError}</p>
+            ) : shownOutput ? (
               <div className="node-io-block">
-                {result.error && <p className="error-text">{result.error}</p>}
-                <OutputViewer data={result.output} />
+                {shownOutput.error && <p className="error-text">{shownOutput.error}</p>}
+                <OutputViewer data={shownOutput.output} />
               </div>
             ) : (
               <p className="node-io-empty">
-                No output yet — run the workflow (or use the node test in the inspector) to see what this
-                node produces.
+                No output yet — click <strong>▶ Execute step</strong> to run just this node, or run the
+                whole workflow.
               </p>
             )}
           </div>

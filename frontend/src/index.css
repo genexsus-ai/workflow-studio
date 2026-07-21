@@ -3602,3 +3602,36 @@ button.danger {
 .config-panel-titlebar .node-io-open {
   flex: none;
 }
+
+/* Execute step button in the node detail dialog header */
+
+.node-io-execute {
+  margin-left: auto;
+  padding: 7px 14px;
+  border: none;
+  border-radius: 8px;
+  background: #f97316;
+  color: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.node-io-execute:hover:not(:disabled) {
+  background: #ea580c;
+}
+
+.node-io-execute:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.node-io-close-x {
+  margin-left: 12px;
+  border: none;
+  background: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: #64748b;
+}
