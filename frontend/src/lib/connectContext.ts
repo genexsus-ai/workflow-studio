@@ -15,6 +15,12 @@ export const ConnectPickerContext = createContext<(request: ConnectRequest) => v
 
 export const useConnectPicker = () => useContext(ConnectPickerContext)
 
+/** Lets a flow edge ask the Canvas to open the picker to insert a node
+ * in the middle of that edge (the Zapier/n8n "+" between two nodes). */
+export const InsertPickerContext = createContext<(edgeId: string) => void>(() => {})
+
+export const useInsertPicker = () => useContext(InsertPickerContext)
+
 /** Component types each agent port accepts. */
 export const PORT_TYPES: Record<AttachPort, string[]> = {
   model: ['model'],

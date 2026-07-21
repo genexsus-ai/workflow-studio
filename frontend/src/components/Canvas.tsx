@@ -5,22 +5,30 @@ import {
   ReactFlow,
   useReactFlow,
   type Edge,
+  type EdgeTypes,
   type NodeTypes,
   type OnConnect,
   type OnEdgesChange,
   type OnNodesChange,
   type OnSelectionChangeFunc,
 } from '@xyflow/react'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 
-import { ConnectPickerContext, PORT_TYPES, type ConnectRequest } from '../lib/connectContext'
+import {
+  ConnectPickerContext,
+  InsertPickerContext,
+  PORT_TYPES,
+  type ConnectRequest,
+} from '../lib/connectContext'
 import type { StudioNode } from '../lib/translate'
 import type { AgentPresetDef, ConnectorDef, FlowPatternDef, McpServerSummary, NodeTypeDef, ToolDef } from '../types'
 import { FirstStepPicker } from './FirstStepPicker'
 import { NodePicker, type PickedNode } from './NodePicker'
 import { StudioNode as StudioNodeComponent } from './nodes/StudioNode'
+import { InsertEdge } from './edges/InsertEdge'
 
 const nodeTypes: NodeTypes = { studio: StudioNodeComponent }
+const edgeTypes: EdgeTypes = { insert: InsertEdge }
 
 interface CanvasProps {
   nodes: StudioNode[]
@@ -40,6 +48,8 @@ interface CanvasProps {
   onDropNode: (picked: PickedNode, position: { x: number; y: number }) => void
   onAddConnected: (sourceId: string, picked: PickedNode) => void
   onAddAttached: (agentId: string, port: 'model' | 'memory' | 'tools' | 'agents', picked: PickedNode) => void
+  /** Insert a node into the middle of an existing edge (the "+" between nodes). */
+  onInsertNode: (edgeId: string, picked: PickedNode) => void
 }
 
 export function Canvas({
@@ -59,13 +69,21 @@ export function Canvas({
   onDropNode,
   onAddConnected,
   onAddAttached,
+  onInsertNode,
 }: CanvasProps) {
   const { screenToFlowPosition } = useReactFlow()
   const wrapperRef = useRef<HTMLDivElement>(null)
   // n8n-style: the trigger is a regular canvas node at the start of the flow.
   const triggerNode = nodes.find((node) => node.data?.nodeType === 'trigger')
   const [connectFrom, setConnectFrom] = useState<ConnectRequest | null>(null)
+  const [insertEdgeId, setInsertEdgeId] = useState<string | null>(null)
   const [freePickOpen, setFreePickOpen] = useState(false)
+
+  // Flow edges get the "+" (insert) affordance; capability/attach edges don't.
+  const displayEdges = useMemo(
+    () => edges.map((edge) => (edge.data?.attach ? edge : { ...edge, type: 'insert' })),
+    [edges],
+  )
   const [dark, setDark] = useState(
     () => localStorage.getItem('genxai-canvas-dark') === '1',
   )
@@ -103,11 +121,13 @@ export function Canvas({
   return (
     <div className={`canvas${dark ? ' dark' : ''}`} ref={wrapperRef}>
       <ConnectPickerContext.Provider value={setConnectFrom}>
+      <InsertPickerContext.Provider value={setInsertEdgeId}>
       <ReactFlow
         colorMode={dark ? 'dark' : 'light'}
         nodes={nodes}
-        edges={edges}
+        edges={displayEdges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
@@ -121,6 +141,7 @@ export function Canvas({
         <MiniMap pannable zoomable />
         <Controls />
       </ReactFlow>
+      </InsertPickerContext.Provider>
       </ConnectPickerContext.Provider>
       {nodes.length > 0 && (
         <button
@@ -203,6 +224,21 @@ export function Canvas({
               onAddConnected(connectFrom.nodeId, picked)
             }
             setConnectFrom(null)
+          }}
+        />
+      )}
+      {insertEdgeId && (
+        <NodePicker
+          nodeDefs={nodeDefs.filter((def) => !['trigger', 'input'].includes(def.type))}
+          connectors={connectors}
+          agentPresets={agentPresets}
+          tools={tools}
+          mcpServers={mcpServers}
+          flows={flows}
+          onClose={() => setInsertEdgeId(null)}
+          onPick={(picked) => {
+            onInsertNode(insertEdgeId, picked)
+            setInsertEdgeId(null)
           }}
         />
       )}

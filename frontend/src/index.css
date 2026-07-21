@@ -3635,3 +3635,42 @@ button.danger {
   cursor: pointer;
   color: #64748b;
 }
+
+/* "+" insert button on flow edges (Zapier / n8n style) */
+
+.edge-insert-button {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid #c7d2fe;
+  background: #ffffff;
+  color: #6366f1;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: all;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.15);
+  opacity: 0;
+  transition: opacity 0.12s ease, transform 0.1s ease, background 0.12s ease;
+}
+
+.react-flow__edge:hover .edge-insert-button,
+.edge-insert-button:focus-visible {
+  opacity: 1;
+}
+
+.edge-insert-button:hover {
+  background: #6366f1;
+  color: #ffffff;
+}
+
+.canvas.dark .edge-insert-button {
+  background: #1e293b;
+  border-color: #4f46e5;
+  color: #a5b4fc;
+}

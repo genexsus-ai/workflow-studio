@@ -385,6 +385,62 @@ export default function App() {
     [nodes, edges, buildNode],
   )
 
+  const onInsertNode = useCallback(
+    (edgeId: string, picked: PickedNode) => {
+      const edge = edges.find((e) => e.id === edgeId)
+      if (!edge) return
+      const source = nodes.find((n) => n.id === edge.source)
+      const target = nodes.find((n) => n.id === edge.target)
+      if (!source || !target) return
+
+      const taken = new Set(nodes.map((n) => n.id))
+      // New node takes the target's spot; target and everything to its right
+      // shift over to make room (Zapier/n8n reflow).
+      const shift = 260
+      const targetX = target.position.x
+      const newNode = buildNode(picked, { x: targetX, y: target.position.y }, taken)
+
+      setNodes((current) =>
+        current
+          .map((n) =>
+            n.position.x >= targetX ? { ...n, position: { ...n.position, x: n.position.x + shift } } : n,
+          )
+          .concat(newNode),
+      )
+      // Rewire: source -> new (plain), new -> target (carry the old edge's
+      // condition/parallel so branching survives the insert).
+      setEdges((current) => {
+        const withoutOld = current.filter((e) => e.id !== edgeId)
+        const e1 = addEdge(
+          {
+            source: source.id,
+            target: newNode.id,
+            sourceHandle: null,
+            targetHandle: null,
+            data: { condition: null, parallel: false, attach: null },
+          },
+          withoutOld,
+        )
+        return addEdge(
+          {
+            source: newNode.id,
+            target: target.id,
+            sourceHandle: null,
+            targetHandle: null,
+            data: {
+              condition: (edge.data?.condition as string | null) ?? null,
+              parallel: Boolean(edge.data?.parallel),
+              attach: null,
+            },
+          },
+          e1,
+        )
+      })
+      setDirty(true)
+    },
+    [nodes, edges, buildNode],
+  )
+
   const onNodeConfigChange = useCallback(
     (nodeId: string, config: Record<string, unknown>, label?: string) => {
       setNodes((current) =>
@@ -789,6 +845,7 @@ export default function App() {
             mcpServers={mcpServers}
             flows={palette?.flows ?? []}
             onAddConnected={onAddConnected}
+            onInsertNode={onInsertNode}
             onAddAttached={onAddAttached}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
