@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 
+import { NodeParamsFields, type NodeParamsFieldsProps } from './NodeParamsFields'
+
 import type { StudioNode } from '../lib/translate'
-import type { NodeResult } from '../types'
+import type { NodeResult, NodeTypeDef } from '../types'
 
 /** One upstream node feeding the selected node (an incoming edge's source). */
 export interface UpstreamEntry {
@@ -10,13 +12,16 @@ export interface UpstreamEntry {
   result?: NodeResult
 }
 
-interface NodeIOViewProps {
+type ParamsProps = Omit<NodeParamsFieldsProps, 'node' | 'def'>
+
+interface NodeIOViewProps extends ParamsProps {
   node: StudioNode
   /** Sources of the node's incoming edges, with their last-run results. */
   upstream: UpstreamEntry[]
   /** The run's input JSON — the "input" for entry nodes with no upstream. */
   workflowInput: Record<string, unknown> | null
   result?: NodeResult
+  nodeTypes: NodeTypeDef[]
   onClose: () => void
 }
 
@@ -185,7 +190,15 @@ const TRIGGER_SOURCE_HINT: Record<string, string> = {
  * node produced on the last run). Trigger nodes show the event source as
  * input and the latest run's input (e.g. the form submission) as output.
  */
-export function NodeIOView({ node, upstream, workflowInput, result, onClose }: NodeIOViewProps) {
+export function NodeIOView({
+  node,
+  upstream,
+  workflowInput,
+  result,
+  nodeTypes,
+  onClose,
+  ...paramsProps
+}: NodeIOViewProps) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
@@ -194,9 +207,11 @@ export function NodeIOView({ node, upstream, workflowInput, result, onClose }: N
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  const def = nodeTypes.find((t) => t.type === node.data.nodeType)
+
   return (
     <div className="node-io-overlay" onClick={onClose}>
-      <div className="node-io-dialog" onClick={(event) => event.stopPropagation()}>
+      <div className="node-io-dialog node-io-dialog-3col" onClick={(event) => event.stopPropagation()}>
         <div className="node-io-header">
           <h2>
             {node.data.label}
@@ -258,6 +273,11 @@ export function NodeIOView({ node, upstream, workflowInput, result, onClose }: N
                 Reference these values with <code>{'{{ node_id.data.result }}'}</code> expressions.
               </p>
             )}
+          </div>
+
+          <div className="node-io-col node-io-params">
+            <h3>Parameters</h3>
+            <NodeParamsFields node={node} def={def} {...paramsProps} />
           </div>
 
           <div className="node-io-col">

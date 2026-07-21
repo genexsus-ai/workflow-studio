@@ -3572,3 +3572,33 @@ button.danger {
   color: #64748b;
   font-weight: 600;
 }
+
+/* Three-column node detail dialog: Input · Parameters · Output (n8n-style) */
+
+.node-io-dialog-3col {
+  width: 1240px;
+}
+
+.node-io-dialog-3col .node-io-columns {
+  grid-template-columns: 1fr 1.1fr 1fr;
+}
+
+.node-io-params {
+  background: #ffffff !important;
+}
+
+.node-io-params .field {
+  margin-bottom: 12px;
+  font-size: 12.5px;
+}
+
+.config-panel-titlebar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.config-panel-titlebar .node-io-open {
+  flex: none;
+}

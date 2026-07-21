@@ -754,6 +754,18 @@ export default function App() {
               workflowInput={runInputForDisplay}
               result={nodeResults[ioNode.id]}
               onClose={() => setIoNodeId(null)}
+              automation={automation}
+              onSaveWorkflow={onSave}
+              nodeTypes={palette?.node_types ?? []}
+              tools={palette?.tools ?? []}
+              models={palette?.models ?? []}
+              connectors={palette?.connectors ?? []}
+              credentials={credentials}
+              mcpServers={mcpServers}
+              workflows={workflows}
+              flows={palette?.flows ?? []}
+              currentWorkflowId={currentId}
+              onNodeConfigChange={onNodeConfigChange}
             />
           ))}
         {banner && (
