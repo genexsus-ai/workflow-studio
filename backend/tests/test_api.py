@@ -1580,3 +1580,42 @@ def test_import_workflow_composition_yaml_maps_condition_and_subgraph(client):
 def test_import_rejects_malformed_yaml(client):
     response = client.post("/api/v1/workflows/import-yaml", json={"yaml": "not: a: workflow"})
     assert response.status_code == 400
+
+
+def test_agent_run_record_is_json_serializable(client, mock_llm):
+    """An agent node must not leak non-serializable service objects (e.g. the
+    human_input_provider function) into its run record — that used to 500 the
+    runs API."""
+    import json as _json
+
+    doc = {
+        "name": "Agent serialize",
+        "nodes": [
+            {"id": "start", "type": "input", "position": {"x": 0, "y": 0}, "config": {}},
+            {
+                "id": "agent",
+                "type": "agent",
+                "position": {"x": 200, "y": 0},
+                "config": {"role": "Helper", "goal": "help", "llm_model": "stub", "task": "Echo {{ input.msg }}"},
+            },
+        ],
+        "edges": [{"source": "start", "target": "agent"}],
+    }
+    workflow_id = client.post("/api/v1/workflows", json=doc).json()["id"]
+
+    with client.stream(
+        "POST", f"/api/v1/workflows/{workflow_id}/run/stream", json={"input": {"msg": "hi"}}
+    ) as resp:
+        assert resp.status_code == 200
+        for _ in resp.iter_lines():
+            pass
+
+    # Both the list and the record must serialize cleanly (200, valid JSON)
+    listing = client.get("/api/v1/runs")
+    assert listing.status_code == 200
+    run_id = listing.json()[0]["run_id"]
+    record = client.get(f"/api/v1/runs/{run_id}")
+    assert record.status_code == 200
+    # round-trips through JSON without error, and no function repr leaked
+    dumped = _json.dumps(record.json())
+    assert "human_input_provider" not in dumped or "<function" not in dumped

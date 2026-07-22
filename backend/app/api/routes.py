@@ -1613,11 +1613,27 @@ async def list_mcp_server_tools(name: str) -> list[dict]:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+def _json_safe(obj: Any) -> Any:
+    """Recursively coerce a value to something JSON-serializable.
+
+    A run record can occasionally carry a non-serializable value (e.g. a
+    live provider/callable that leaked into state); replace those with their
+    repr so one bad record never 500s the whole runs API.
+    """
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    if isinstance(obj, dict):
+        return {str(k): _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    return repr(obj)
+
+
 @router.get("/runs")
 def list_runs() -> list[dict]:
     store = get_execution_store()
     records = getattr(store, "_records", {})
-    runs = [record.to_dict() for record in records.values()]
+    runs = [_json_safe(record.to_dict()) for record in records.values()]
     runs.sort(key=lambda r: r.get("started_at") or "", reverse=True)
     return runs[:100]
 
@@ -1627,7 +1643,7 @@ def get_run(run_id: str) -> dict:
     record = get_execution_store().get(run_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Run not found")
-    return record.to_dict()
+    return _json_safe(record.to_dict())
 
 
 @router.get("/runs/{run_id}/stream")
