@@ -46,8 +46,9 @@ spec:
         app: genxflowstudio-backend
     spec:
       # local-path PVC is node-local: keep the pod where the volume lives
+      # (control-plane moved to the optiplex-5060 / 172.20.151.33 on 2026-08-02)
       nodeSelector:
-        kubernetes.io/hostname: irsal2009-hp-elitedesk-800-g3-dm-35w
+        kubernetes.io/hostname: irsal2009-optiplex-5060
       containers:
         - name: backend
           image: docker.io/library/genxflowstudio-backend:latest
