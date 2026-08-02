@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     # this value in the X-Studio-Token header.
     studio_api_token: str | None = None
 
+    # Secret for signing user-session JWTs. MUST be overridden in production
+    # (via JWT_SECRET) — a stable value keeps sessions valid across restarts.
+    jwt_secret: str = "dev-insecure-change-me"
+    jwt_expiry_hours: int = 24 * 7
+
     # Externally reachable base URL of this backend — used to build the
     # OAuth redirect URI registered with providers.
     public_base_url: str = "http://localhost:8000"

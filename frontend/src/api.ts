@@ -35,6 +35,9 @@ const API = `${API_BASE}/api/v1`
 // value is kept in localStorage. Shadowing `fetch` at module scope routes
 // every request in this file through the token-injecting wrapper.
 const TOKEN_KEY = 'studio_api_token'
+// User session JWT (email/password auth). Attached as a Bearer token on
+// every request; cleared on logout.
+export const SESSION_KEY = 'studio_session_jwt'
 
 async function fetch(
   input: RequestInfo | URL,
@@ -43,6 +46,8 @@ async function fetch(
   const headers = new Headers(init?.headers)
   const stored = localStorage.getItem(TOKEN_KEY)
   if (stored) headers.set('X-Studio-Token', stored)
+  const jwt = localStorage.getItem(SESSION_KEY)
+  if (jwt) headers.set('Authorization', `Bearer ${jwt}`)
   let response = await window.fetch(input, { ...init, headers })
   if (response.status === 401) {
     const entered = window.prompt(
@@ -705,3 +710,25 @@ export const compareExperiments = (id: string, otherId: string) =>
   fetch(`${API}/datascience/experiments/${id}/compare/${otherId}`).then((r) =>
     json<{ a: Record<string, unknown>; b: Record<string, unknown> }>(r),
   )
+
+// ---- auth (email/password sessions) --------------------------------------
+export interface AuthUser { id: string; email: string; name: string }
+export interface Org { id: string; name: string; role?: string }
+export interface AuthResult { token: string; user: AuthUser; orgs: Org[] }
+
+export const authSignup = (email: string, password: string, name?: string, org_name?: string) =>
+  fetch(`${API}/auth/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, name: name || '', org_name: org_name || null }),
+  }).then((r) => json<AuthResult>(r))
+
+export const authLogin = (email: string, password: string) =>
+  fetch(`${API}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  }).then((r) => json<AuthResult>(r))
+
+export const authMe = () =>
+  fetch(`${API}/auth/me`).then((r) => json<{ user: AuthUser; orgs: Org[] }>(r))

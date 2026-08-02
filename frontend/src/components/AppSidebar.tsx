@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { FeedbackDialog } from './FeedbackDialog'
+import { useAuth } from './Auth'
 
 export type AppId = 'workflow' | 'analytics' | 'datascience'
 
@@ -29,6 +30,7 @@ export function AppSidebar({ active, onSelect }: AppSidebarProps) {
     () => localStorage.getItem(COLLAPSE_KEY) === '1',
   )
   const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const { user, orgs, logout } = useAuth()
 
   useEffect(() => {
     localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0')
@@ -76,6 +78,21 @@ export function AppSidebar({ active, onSelect }: AppSidebarProps) {
         <span className="app-sidebar-icon">💬</span>
         {!collapsed && <span className="app-sidebar-label">Feedback</span>}
       </button>
+
+      <div className="app-sidebar-user" title={`${user.email}${orgs[0] ? ' · ' + orgs[0].name : ''}`}>
+        <span className="app-sidebar-avatar">{(user.name || user.email)[0]?.toUpperCase()}</span>
+        {!collapsed && (
+          <span className="app-sidebar-user-meta">
+            <span className="app-sidebar-user-name">{user.name || user.email}</span>
+            {orgs[0] && <span className="app-sidebar-user-org">{orgs[0].name}</span>}
+          </span>
+        )}
+        {!collapsed && (
+          <button type="button" className="app-sidebar-logout" title="Sign out" onClick={logout}>
+            ⎋
+          </button>
+        )}
+      </div>
 
       <button
         type="button"

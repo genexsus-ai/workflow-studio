@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.auth_routes import router as auth_router
 from app.api.routes import router
 from app.config import BACKEND_ROOT, get_settings
 from app.tools_bootstrap import register_studio_tools
@@ -79,6 +80,9 @@ def create_app() -> FastAPI:
         hooks_prefix = f"{settings.api_prefix}/hooks/"
         # Hosted forms are public by design: the token in the URL gates access.
         forms_prefix = f"{settings.api_prefix}/forms/"
+        # Auth endpoints (signup/login) must be reachable without the token;
+        # they authenticate via password + JWT instead.
+        auth_prefix = f"{settings.api_prefix}/auth/"
         # Browser redirect from the OAuth provider: can't carry our header.
         # Safe without it — the single-use state nonce authenticates the request.
         oauth_callback_path = f"{settings.api_prefix}/oauth/callback"
@@ -93,6 +97,7 @@ def create_app() -> FastAPI:
                 path.startswith(settings.api_prefix)
                 and not path.startswith(hooks_prefix)
                 and not path.startswith(forms_prefix)
+                and not path.startswith(auth_prefix)
                 and path != oauth_callback_path
                 and not is_public_feedback
                 and request.method != "OPTIONS"
@@ -108,6 +113,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(router, prefix=settings.api_prefix)
+    app.include_router(auth_router, prefix=settings.api_prefix)
 
     @app.get("/health")
     def health() -> dict:
